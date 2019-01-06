@@ -1,4 +1,5 @@
 ﻿using System;
+using GameServerCore;
 using GameServerCore.Domain;
 using GameServerCore.Domain.GameObjects;
 using GameServerCore.Enums;
@@ -160,8 +161,15 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits
                     throw new ArgumentOutOfRangeException(nameof(source), source, null);
             }
 
-            //Damage dealing. (based on leagueoflegends' wikia)
-            damage = defense >= 0 ? 100 / (100 + defense) * damage : (2 - 100 / (100 - defense)) * damage;
+            if (damage < 0f)
+            {
+                damage = 0f;
+            }
+            else
+            {
+                //Damage dealing. (based on leagueoflegends' wikia)
+                damage = defense >= 0 ? 100 / (100 + defense) * damage : (2 - 100 / (100 - defense)) * damage;
+            }
 
             ApiEventManager.OnUnitDamageTaken.Publish(this);
 
@@ -177,12 +185,17 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits
             // todo: check if damage dealt by disconnected players cause anything bad 
             if (attacker is IChampion attackerChamp)
             {
-                attackerId = (int)_game.PlayerManager.GetClientInfoByChampion(attackerChamp).UserId;
+                attackerId = (int)_game.PlayerManager.GetClientInfoByChampion(attackerChamp).PlayerId;
             }
 
             if (this is IChampion targetChamp)
             {
-                targetId = (int)_game.PlayerManager.GetClientInfoByChampion(targetChamp).UserId;
+                targetId = (int)_game.PlayerManager.GetClientInfoByChampion(targetChamp).PlayerId;
+            }
+            // Show damage text for owner of pet
+            if (attacker is IMinion attackerMinion && attackerMinion.IsPet && attackerMinion.Owner is IChampion)
+            {
+                attackerId = (int)_game.PlayerManager.GetClientInfoByChampion((IChampion)attackerMinion.Owner).PlayerId;
             }
 
             _game.PacketNotifier.NotifyDamageDone(attacker, this, damage, type, damageText,
@@ -261,7 +274,7 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits
         MINION_ATTACKING_MINION = 3,
         TURRET_ATTACKING_MINION = 4,
         CHAMPION_ATTACKING_MINION = 5,
-        PLACEABLE = 6,
+        MINION = 6,
         SUPER_OR_CANNON_MINION = 7,
         CASTER_MINION = 8,
         MELEE_MINION = 9,
