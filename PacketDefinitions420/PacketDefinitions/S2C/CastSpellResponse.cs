@@ -7,7 +7,7 @@ namespace PacketDefinitions420.PacketDefinitions.S2C
 {
     public class CastSpellResponse : BasePacket
     {
-        public CastSpellResponse(INavGrid navGrid, ISpell s, float x, float y, float xDragEnd, float yDragEnd, uint futureProjNetId, uint spellNetId)
+        public CastSpellResponse(INavigationGrid navGrid, ISpell s, float x, float y, float xDragEnd, float yDragEnd, uint futureProjNetId, uint spellNetId)
             : base(PacketCmd.PKT_S2C_CAST_SPELL_ANS, s.Owner.NetId)
         {
             Write(Environment.TickCount); // syncID
@@ -19,7 +19,7 @@ namespace PacketDefinitions420.PacketDefinitions.S2C
             Write(1.0f); // attackSpeedMod
             WriteNetId(s.Owner);
             WriteNetId(s.Owner);
-            Write((int)s.Owner.GetChampionHash());
+            Write((int)s.Owner.GetObjHash());
             Write((uint)futureProjNetId); // The projectile ID that will be spawned
             Write((float)x);
             Write((float)navGrid.GetHeightAtLocation(x, y));

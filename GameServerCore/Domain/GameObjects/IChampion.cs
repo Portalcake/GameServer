@@ -16,18 +16,18 @@ namespace GameServerCore.Domain.GameObjects
 
         // basic
         void UpdateSkin(int skinNo);
-        int GetChampionHash();
         void StopChampionMovement();
         bool CanMove();
         void UpdateMoveOrder(MoveOrder order);
         bool CanCast();
         void Recall();
         void Respawn();
+        bool OnDisconnect();
 
         // spells
-        void SetSpell(string name, byte slot, bool enabled = false);
         void SwapSpells(byte slot1, byte slot2);
         void RemoveSpell(byte slot);
+        ISpell SetSpell(string name, byte slot, bool enabled = false);
         ISpell GetSpell(byte slot);
         ISpell LevelUpSpell(byte slot);
 

@@ -4,6 +4,7 @@ using System.Numerics;
 using GameServerCore.Domain;
 using GameServerCore.Domain.GameObjects;
 using GameServerCore.Enums;
+using GameServerCore.Maps;
 using LeagueSandbox.GameServer.GameObjects;
 using LeagueSandbox.GameServer.GameObjects.AttackableUnits;
 using LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI;
@@ -155,6 +156,7 @@ namespace LeagueSandbox.GameServer.Maps
         private long _nextSpawnTime = 90 * 1000;
         private readonly long _spawnInterval = 30 * 1000;
         private readonly Dictionary<TeamId, Fountain> _fountains;
+        private readonly Dictionary<TeamId, SurrenderHandler> _surrenders;
 
         public List<int> ExpToLevelUp { get; set; } = new List<int>
         {
@@ -185,6 +187,23 @@ namespace LeagueSandbox.GameServer.Maps
         public int BluePillId { get; set; } = 2001;
         public long FirstGoldTime { get; set; } = 90 * 1000;
         public bool SpawnEnabled { get; set; }
+
+        private readonly List<LaneTurret> _blueOuterTurrets = new List<LaneTurret>(3);
+        private readonly List<LaneTurret> _blueInnerTurrets = new List<LaneTurret>(3);
+        private readonly List<LaneTurret> _blueInhibTurrets = new List<LaneTurret>(3);
+        private readonly List<LaneTurret> _blueNexusTurrets = new List<LaneTurret>(3);
+
+        private readonly List<LaneTurret> _purpleOuterTurrets = new List<LaneTurret>(3);
+        private readonly List<LaneTurret> _purpleInnerTurrets = new List<LaneTurret>(3);
+        private readonly List<LaneTurret> _purpleInhibTurrets = new List<LaneTurret>(3);
+        private readonly List<LaneTurret> _purpleNexusTurrets = new List<LaneTurret>(3);
+
+        private readonly List<Inhibitor> _blueInhibitors = new List<Inhibitor>(3);
+        private readonly List<Inhibitor> _purpleInhibitors = new List<Inhibitor>(3);
+
+        private Nexus _blueNexus;
+        private Nexus _purpleNexus;
+
         public SummonersRift(Game game)
         {
             _game = game;
@@ -192,6 +211,11 @@ namespace LeagueSandbox.GameServer.Maps
             {
                 { TeamId.TEAM_BLUE, new Fountain(game, TeamId.TEAM_BLUE, 11, 250, 1000) },
                 { TeamId.TEAM_PURPLE, new Fountain(game, TeamId.TEAM_PURPLE, 13950, 14200, 1000) }
+            };
+            _surrenders = new Dictionary<TeamId, SurrenderHandler>
+            {
+                { TeamId.TEAM_BLUE, new SurrenderHandler(game, TeamId.TEAM_BLUE, 1200000.0f , 300000.0f , 30.0f) },
+                { TeamId.TEAM_PURPLE, new SurrenderHandler(game, TeamId.TEAM_PURPLE, 1200000.0f, 300000.0f, 30.0f) }
             };
             SpawnEnabled = _game.Config.MinionSpawnsEnabled;
         }
@@ -215,73 +239,138 @@ namespace LeagueSandbox.GameServer.Maps
             _game.Map.AnnouncerEvents.Add(new Announce(_game, _firstSpawnTime, Announces.MINIONS_HAVE_SPAWNED, false)); // Minions have spawned (90 * 1000)
             _game.Map.AnnouncerEvents.Add(new Announce(_game, _firstSpawnTime, Announces.MINIONS_HAVE_SPAWNED2, false)); // Minions have spawned [2] (90 * 1000)
 
-            _game.ObjectManager.AddObject(new LaneTurret(_game, "Turret_T1_R_03_A", 10097.62f, 808.73f, TeamId.TEAM_BLUE,
+            // TODO: Generate & use exact positions from content files
+
+            //TODO: Unhardcode everything (preferably by reading from content)
+            var inhibRadius = 325;
+            var nexusRadius = 350;
+            var sightRange = 1700;
+
+            //BLUE TEAM
+            // Outer top - mid - bot turrets
+            _blueOuterTurrets.Add(new LaneTurret(_game, "Turret_T1_L_03_A", 574.66f, 10220.47f, TeamId.TEAM_BLUE,
                 TurretType.OUTER_TURRET, GetTurretItems(TurretType.OUTER_TURRET)));
-            _game.ObjectManager.AddObject(new LaneTurret(_game, "Turret_T1_R_02_A", 6512.53f, 1262.62f, TeamId.TEAM_BLUE,
-                TurretType.INNER_TURRET, GetTurretItems(TurretType.INNER_TURRET)));
-            _game.ObjectManager.AddObject(new LaneTurret(_game, "Turret_T1_C_07_A", 3747.26f, 1041.04f, TeamId.TEAM_BLUE,
-                TurretType.INHIBITOR_TURRET, GetTurretItems(TurretType.INHIBITOR_TURRET)));
-            _game.ObjectManager.AddObject(new LaneTurret(_game, "Turret_T2_R_03_A", 13459.0f, 4284.0f, TeamId.TEAM_PURPLE,
+            _blueOuterTurrets.Add(new LaneTurret(_game, "Turret_T1_C_05_A", 5448.02f, 6169.10f, TeamId.TEAM_BLUE,
                 TurretType.OUTER_TURRET, GetTurretItems(TurretType.OUTER_TURRET)));
-            _game.ObjectManager.AddObject(new LaneTurret(_game, "Turret_T2_R_02_A", 12920.0f, 8005.0f, TeamId.TEAM_PURPLE,
-                TurretType.INNER_TURRET, GetTurretItems(TurretType.INNER_TURRET)));
-            _game.ObjectManager.AddObject(new LaneTurret(_game, "Turret_T2_R_01_A", 13205.0f, 10474.0f, TeamId.TEAM_PURPLE,
-                TurretType.INHIBITOR_TURRET, GetTurretItems(TurretType.INHIBITOR_TURRET)));
-            _game.ObjectManager.AddObject(new LaneTurret(_game, "Turret_T1_C_05_A", 5448.02f, 6169.10f, TeamId.TEAM_BLUE,
+            _blueOuterTurrets.Add(new LaneTurret(_game, "Turret_T1_R_03_A", 10097.62f, 808.73f, TeamId.TEAM_BLUE,
                 TurretType.OUTER_TURRET, GetTurretItems(TurretType.OUTER_TURRET)));
-            _game.ObjectManager.AddObject(new LaneTurret(_game, "Turret_T1_C_04_A", 4657.66f, 4591.91f, TeamId.TEAM_BLUE,
+
+            // Inner top - mid - bot turrets
+            _blueInnerTurrets.Add(new LaneTurret(_game, "Turret_T1_L_02_A", 1106.26f, 6485.25f, TeamId.TEAM_BLUE,
                 TurretType.INNER_TURRET, GetTurretItems(TurretType.INNER_TURRET)));
-            _game.ObjectManager.AddObject(new LaneTurret(_game, "Turret_T1_C_03_A", 3233.99f, 3447.24f, TeamId.TEAM_BLUE,
+            _blueInnerTurrets.Add(new LaneTurret(_game, "Turret_T1_C_04_A", 4657.66f, 4591.91f, TeamId.TEAM_BLUE,
+                TurretType.INNER_TURRET, GetTurretItems(TurretType.INNER_TURRET)));
+            _blueInnerTurrets.Add(new LaneTurret(_game, "Turret_T1_R_02_A", 6512.53f, 1262.62f, TeamId.TEAM_BLUE,
+                TurretType.INNER_TURRET, GetTurretItems(TurretType.INNER_TURRET)));
+
+            // Inhibitor top - mid - bot turrets
+            _blueInhibTurrets.Add(new LaneTurret(_game, "Turret_T1_C_06_A", 802.81f, 4052.36f, TeamId.TEAM_BLUE,
                 TurretType.INHIBITOR_TURRET, GetTurretItems(TurretType.INHIBITOR_TURRET)));
-            _game.ObjectManager.AddObject(new LaneTurret(_game, "Turret_T1_C_01_A", 1341.63f, 2029.98f, TeamId.TEAM_BLUE,
+            _blueInhibTurrets.Add(new LaneTurret(_game, "Turret_T1_C_03_A", 3233.99f, 3447.24f, TeamId.TEAM_BLUE,
+                TurretType.INHIBITOR_TURRET, GetTurretItems(TurretType.INHIBITOR_TURRET)));
+            _blueInhibTurrets.Add(new LaneTurret(_game, "Turret_T1_C_07_A", 3747.26f, 1041.04f, TeamId.TEAM_BLUE,
+                TurretType.INHIBITOR_TURRET, GetTurretItems(TurretType.INHIBITOR_TURRET)));
+
+            // Inhibitors
+            _blueInhibitors.Add(new Inhibitor(_game, "OrderInhibitor", TeamId.TEAM_BLUE, inhibRadius, 796.097f, 3339.8077f, sightRange, 0xffd23c3e));
+            _blueInhibitors.Add(new Inhibitor(_game, "OrderInhibitor", TeamId.TEAM_BLUE, inhibRadius, 2746.097f, 2964.8077f, sightRange, 0xff4a20f1));
+            _blueInhibitors.Add(new Inhibitor(_game, "OrderInhibitor", TeamId.TEAM_BLUE, inhibRadius, 2996.097f, 1014.8077f, sightRange, 0xff9303e1));
+
+            // Nexus turrets
+            _blueNexusTurrets.Add(new LaneTurret(_game, "Turret_T1_C_01_A", 1271.097f, 1989.8077f, TeamId.TEAM_BLUE,
                 TurretType.NEXUS_TURRET, GetTurretItems(TurretType.NEXUS_TURRET)));
-            _game.ObjectManager.AddObject(new LaneTurret(_game, "Turret_T1_C_02_A", 1768.19f, 1589.47f, TeamId.TEAM_BLUE,
+            _blueNexusTurrets.Add(new LaneTurret(_game, "Turret_T1_C_02_A", 1821.097f, 1589.8077f, TeamId.TEAM_BLUE,
                 TurretType.NEXUS_TURRET, GetTurretItems(TurretType.NEXUS_TURRET)));
-            _game.ObjectManager.AddObject(new LaneTurret(_game, "Turret_T2_C_05_A", 8548.0f, 8289.0f, TeamId.TEAM_PURPLE,
+
+
+            // PURPLE TEAM
+            // Outer top - mid - bot turrets
+            _purpleOuterTurrets.Add(new LaneTurret(_game, "Turret_T2_L_03_A", 3911.0f, 13654.0f, TeamId.TEAM_PURPLE,
+                TurretType.OUTER_TURRET, TurretItems[TurretType.OUTER_TURRET]));
+            _purpleOuterTurrets.Add(new LaneTurret(_game, "Turret_T2_C_05_A", 8548.0f, 8289.0f, TeamId.TEAM_PURPLE,
                 TurretType.OUTER_TURRET, GetTurretItems(TurretType.OUTER_TURRET)));
-            _game.ObjectManager.AddObject(new LaneTurret(_game, "Turret_T2_C_04_A", 9361.0f, 9892.0f, TeamId.TEAM_PURPLE,
+            _purpleOuterTurrets.Add(new LaneTurret(_game, "Turret_T2_R_03_A", 13459.0f, 4284.0f, TeamId.TEAM_PURPLE,
+                TurretType.OUTER_TURRET, GetTurretItems(TurretType.OUTER_TURRET)));
+
+            // Inner top - mid - bot turrets
+            _purpleInnerTurrets.Add(new LaneTurret(_game, "Turret_T2_L_02_A", 7536.0f, 13190.0f, TeamId.TEAM_PURPLE,
                 TurretType.INNER_TURRET, GetTurretItems(TurretType.INNER_TURRET)));
-            _game.ObjectManager.AddObject(new LaneTurret(_game, "Turret_T2_C_03_A", 10743.0f, 11010.0f, TeamId.TEAM_PURPLE,
+            _purpleInnerTurrets.Add(new LaneTurret(_game, "Turret_T2_C_04_A", 9361.0f, 9892.0f, TeamId.TEAM_PURPLE,
+                TurretType.INNER_TURRET, GetTurretItems(TurretType.INNER_TURRET)));
+            _purpleInnerTurrets.Add(new LaneTurret(_game, "Turret_T2_R_02_A", 12920.0f, 8005.0f, TeamId.TEAM_PURPLE,
+                TurretType.INNER_TURRET, GetTurretItems(TurretType.INNER_TURRET)));
+
+            // Inhibitor top - mid - bot turrets
+            _purpleInhibTurrets.Add(new LaneTurret(_game, "Turret_T2_L_01_A", 10261.0f, 13465.0f, TeamId.TEAM_PURPLE,
                 TurretType.INHIBITOR_TURRET, GetTurretItems(TurretType.INHIBITOR_TURRET)));
-            _game.ObjectManager.AddObject(new LaneTurret(_game, "Turret_T2_C_01_A", 12662.0f, 12442.0f, TeamId.TEAM_PURPLE,
+            _purpleInhibTurrets.Add(new LaneTurret(_game, "Turret_T2_C_03_A", 10743.0f, 11010.0f, TeamId.TEAM_PURPLE,
+                TurretType.INHIBITOR_TURRET, GetTurretItems(TurretType.INHIBITOR_TURRET)));
+            _purpleInhibTurrets.Add(new LaneTurret(_game, "Turret_T2_R_01_A", 13205.0f, 10474.0f, TeamId.TEAM_PURPLE,
+                TurretType.INHIBITOR_TURRET, GetTurretItems(TurretType.INHIBITOR_TURRET)));
+
+            // Inhibitors
+            _purpleInhibitors.Add(new Inhibitor(_game, "ChaosInhibitor", TeamId.TEAM_PURPLE, inhibRadius, 10946.097f, 13414.8077f, sightRange, 0xff6793d0));
+            _purpleInhibitors.Add(new Inhibitor(_game, "ChaosInhibitor", TeamId.TEAM_PURPLE, inhibRadius, 11196.097f, 11439.8077f, sightRange, 0xffff8f1f));
+            _purpleInhibitors.Add(new Inhibitor(_game, "ChaosInhibitor", TeamId.TEAM_PURPLE, inhibRadius, 13196.097f, 11164.8077f, sightRange, 0xff26ac0f));
+
+            // Nexus turrets
+            _purpleNexusTurrets.Add(new LaneTurret(_game, "Turret_T2_C_01_A", 12621.097f, 12364.8077f, TeamId.TEAM_PURPLE,
                 TurretType.NEXUS_TURRET, GetTurretItems(TurretType.NEXUS_TURRET)));
-            _game.ObjectManager.AddObject(new LaneTurret(_game, "Turret_T2_C_02_A", 12118.0f, 12876.0f, TeamId.TEAM_PURPLE,
+            _purpleNexusTurrets.Add(new LaneTurret(_game, "Turret_T2_C_02_A", 12171.097f, 12789.8077f, TeamId.TEAM_PURPLE,
                 TurretType.NEXUS_TURRET, GetTurretItems(TurretType.NEXUS_TURRET)));
+
             _game.ObjectManager.AddObject(new LaneTurret(_game, "Turret_OrderTurretShrine_A", -236.05f, -53.32f, TeamId.TEAM_BLUE,
                 TurretType.FOUNTAIN_TURRET, GetTurretItems(TurretType.FOUNTAIN_TURRET)));
             _game.ObjectManager.AddObject(new LaneTurret(_game, "Turret_ChaosTurretShrine_A", 14157.0f, 14456.0f, TeamId.TEAM_PURPLE,
                 TurretType.FOUNTAIN_TURRET, GetTurretItems(TurretType.FOUNTAIN_TURRET)));
-            _game.ObjectManager.AddObject(new LaneTurret(_game, "Turret_T1_L_03_A", 574.66f, 10220.47f, TeamId.TEAM_BLUE,
-                TurretType.OUTER_TURRET, TurretItems[TurretType.OUTER_TURRET]));
-            _game.ObjectManager.AddObject(new LaneTurret(_game, "Turret_T1_L_02_A", 1106.26f, 6485.25f, TeamId.TEAM_BLUE,
-                TurretType.INNER_TURRET, GetTurretItems(TurretType.INNER_TURRET)));
-            _game.ObjectManager.AddObject(new LaneTurret(_game, "Turret_T1_C_06_A", 802.81f, 4052.36f, TeamId.TEAM_BLUE,
-                TurretType.INHIBITOR_TURRET, GetTurretItems(TurretType.INHIBITOR_TURRET)));
-            _game.ObjectManager.AddObject(new LaneTurret(_game, "Turret_T2_L_03_A", 3911.0f, 13654.0f, TeamId.TEAM_PURPLE,
-                TurretType.OUTER_TURRET, TurretItems[TurretType.OUTER_TURRET]));
-            _game.ObjectManager.AddObject(new LaneTurret(_game, "Turret_T2_L_02_A", 7536.0f, 13190.0f, TeamId.TEAM_PURPLE,
-                TurretType.INNER_TURRET, GetTurretItems(TurretType.INNER_TURRET)));
-            _game.ObjectManager.AddObject(new LaneTurret(_game, "Turret_T2_L_01_A", 10261.0f, 13465.0f, TeamId.TEAM_PURPLE,
-                TurretType.INHIBITOR_TURRET, GetTurretItems(TurretType.INHIBITOR_TURRET)));
+
+            for (int i = 0; i < _blueOuterTurrets.Count; i++)
+            {
+                _game.ProtectionManager.AddProtection(_purpleInhibitors[i], false, _purpleInhibTurrets[i]);
+                _game.ProtectionManager.AddProtection(_purpleInhibTurrets[i], false, _purpleInnerTurrets[i]);
+                _game.ProtectionManager.AddProtection(_purpleInnerTurrets[i], false, _purpleOuterTurrets[i]);
+
+                _game.ProtectionManager.AddProtection(_blueInhibitors[i], false, _blueInhibTurrets[i]);
+                _game.ProtectionManager.AddProtection(_blueInhibTurrets[i], false, _blueInnerTurrets[i]);
+                _game.ProtectionManager.AddProtection(_blueInnerTurrets[i], false, _blueOuterTurrets[i]);
+            }
+            
+            _game.ProtectionManager.AddProtection(_blueNexusTurrets[0], false, new Inhibitor[] {_blueInhibitors[0], _blueInhibitors[1], _blueInhibitors[2]});
+            _game.ProtectionManager.AddProtection(_blueNexusTurrets[1], false, new Inhibitor[] {_blueInhibitors[0], _blueInhibitors[1], _blueInhibitors[2]});
+            
+            _game.ProtectionManager.AddProtection(_purpleNexusTurrets[0], false, new Inhibitor[] {_purpleInhibitors[0], _purpleInhibitors[1], _purpleInhibitors[2]});
+            _game.ProtectionManager.AddProtection(_purpleNexusTurrets[1], false, new Inhibitor[] {_purpleInhibitors[0], _purpleInhibitors[1], _purpleInhibitors[2]});
+
+            foreach (var element in _blueOuterTurrets) _game.ObjectManager.AddObject(element);
+            foreach (var element in _blueInnerTurrets) _game.ObjectManager.AddObject(element);
+            foreach (var element in _blueInhibTurrets) _game.ObjectManager.AddObject(element);
+            foreach (var element in _blueInhibitors) _game.ObjectManager.AddObject(element);
+            foreach (var element in _blueNexusTurrets) _game.ObjectManager.AddObject(element);
+
+            foreach (var element in _purpleOuterTurrets) _game.ObjectManager.AddObject(element);
+            foreach (var element in _purpleInnerTurrets) _game.ObjectManager.AddObject(element);
+            foreach (var element in _purpleInhibTurrets) _game.ObjectManager.AddObject(element);
+            foreach (var element in _purpleInhibitors) _game.ObjectManager.AddObject(element);
+            foreach (var element in _purpleNexusTurrets) _game.ObjectManager.AddObject(element);
+
+             
 
             _game.ObjectManager.AddObject(new LevelProp(_game, 12465.0f, 14422.257f, 101.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, "LevelProp_Yonkey", "Yonkey"));
             _game.ObjectManager.AddObject(new LevelProp(_game, -76.0f, 1769.1589f, 94.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, "LevelProp_Yonkey1", "Yonkey"));
             _game.ObjectManager.AddObject(new LevelProp(_game, 13374.17f, 14245.673f, 194.9741f, 224.0f, 33.33f, 0.0f, 0.0f, -44.44f, "LevelProp_ShopMale", "ShopMale"));
             _game.ObjectManager.AddObject(new LevelProp(_game, -99.5613f, 855.6632f, 191.4039f, 158.0f, 0.0f, 0.0f, 0.0f, 0.0f, "LevelProp_ShopMale1", "ShopMale"));
 
-            //TODO
-            var collisionRadius = 0;
-            var sightRange = 1700;
 
-            _game.ObjectManager.AddObject(new Inhibitor(_game, "OrderInhibitor", TeamId.TEAM_BLUE, collisionRadius, 835, 3400, sightRange, 0xffd23c3e)); //top
-            _game.ObjectManager.AddObject(new Inhibitor(_game, "OrderInhibitor", TeamId.TEAM_BLUE, collisionRadius, 2785, 3000, sightRange, 0xff4a20f1)); //mid
-            _game.ObjectManager.AddObject(new Inhibitor(_game, "OrderInhibitor", TeamId.TEAM_BLUE, collisionRadius, 3044, 1070, sightRange, 0xff9303e1)); //bot
-            _game.ObjectManager.AddObject(new Inhibitor(_game, "ChaosInhibitor", TeamId.TEAM_PURPLE, collisionRadius, 10960, 13450, sightRange, 0xff6793d0)); //top
-            _game.ObjectManager.AddObject(new Inhibitor(_game, "ChaosInhibitor", TeamId.TEAM_PURPLE, collisionRadius, 11240, 11490, sightRange, 0xffff8f1f)); //mid
-            _game.ObjectManager.AddObject(new Inhibitor(_game, "ChaosInhibitor", TeamId.TEAM_PURPLE, collisionRadius, 13200, 11200, sightRange, 0xff26ac0f)); //bot
-
-            _game.ObjectManager.AddObject(new Nexus(_game, "OrderNexus", TeamId.TEAM_BLUE, collisionRadius, 1170, 1470, sightRange, 0xfff97db5));
-            _game.ObjectManager.AddObject(new Nexus(_game, "ChaosNexus", TeamId.TEAM_PURPLE, collisionRadius, 12800, 13100, sightRange, 0xfff02c0f));
+            _blueNexus = new Nexus(_game, "OrderNexus", TeamId.TEAM_BLUE, nexusRadius, 1146.097f, 1414.8077f,
+                sightRange, 0xfff97db5);
+            _purpleNexus = new Nexus(_game, "ChaosNexus", TeamId.TEAM_PURPLE, nexusRadius, 12771.097f, 13014.8077f,
+                sightRange, 0xfff02c0f);
+            
+            _game.ProtectionManager.AddProtection(_blueNexus, new LaneTurret[] { _blueNexusTurrets[0], _blueNexusTurrets[1] }, new Inhibitor[] { _blueInhibitors[0], _blueInhibitors[1], _blueInhibitors[2] });
+            _game.ProtectionManager.AddProtection(_purpleNexus, new LaneTurret[] { _purpleNexusTurrets[0], _purpleNexusTurrets[1] }, new Inhibitor[] { _purpleInhibitors[0], _purpleInhibitors[1], _purpleInhibitors[2] });
+            
+            _game.ObjectManager.AddObject(_blueNexus);
+            _game.ObjectManager.AddObject(_purpleNexus);
         }
 
         public void Update(float diff)
@@ -319,6 +408,9 @@ namespace LeagueSandbox.GameServer.Maps
             {
                 fountain.Update(diff);
             }
+
+            foreach(var surrender in _surrenders.Values)
+                surrender.Update(diff);
         }
 
         public ITarget GetRespawnLocation(TeamId team)
@@ -447,21 +539,21 @@ namespace LeagueSandbox.GameServer.Maps
             return dic[m.MinionSpawnType];
         }
 
-        public Tuple<TeamId, Vector2> GetMinionSpawnPosition(MinionSpawnPosition spawnPosition)
+        public Tuple<TeamId, Vector2> GetMinionSpawnPosition(string spawnPosition)
         {
             switch (spawnPosition)
             {
-                case MinionSpawnPosition.SPAWN_BLUE_TOP:
+                case Barracks.SPAWN_BLUE_TOP:
                     return new Tuple<TeamId, Vector2>(TeamId.TEAM_BLUE, new Vector2(907, 1715));
-                case MinionSpawnPosition.SPAWN_BLUE_BOT:
+                case Barracks.SPAWN_BLUE_BOT:
                     return new Tuple<TeamId, Vector2>(TeamId.TEAM_BLUE, new Vector2(1533, 1321));
-                case MinionSpawnPosition.SPAWN_BLUE_MID:
+                case Barracks.SPAWN_BLUE_MID:
                     return new Tuple<TeamId, Vector2>(TeamId.TEAM_BLUE, new Vector2(1443, 1663));
-                case MinionSpawnPosition.SPAWN_RED_TOP:
+                case Barracks.SPAWN_RED_TOP:
                     return new Tuple<TeamId, Vector2>(TeamId.TEAM_PURPLE, new Vector2(14455, 13159));
-                case MinionSpawnPosition.SPAWN_RED_BOT:
+                case Barracks.SPAWN_RED_BOT:
                     return new Tuple<TeamId, Vector2>(TeamId.TEAM_PURPLE, new Vector2(12967, 12695));
-                case MinionSpawnPosition.SPAWN_RED_MID:
+                case Barracks.SPAWN_RED_MID:
                     return new Tuple<TeamId, Vector2>(TeamId.TEAM_PURPLE, new Vector2(12433, 12623));
             }
             return new Tuple<TeamId, Vector2>(0, new Vector2());
@@ -480,7 +572,7 @@ namespace LeagueSandbox.GameServer.Maps
                     m.Stats.AttackDamage.BaseValue = 12.0f + 1.0f * (int)(_game.GameTime / (180 * 1000));
                     m.Stats.Range.BaseValue = 180.0f;
                     m.Stats.AttackSpeedFlat = 1.250f;
-                    m.AutoAttackDelay = 11.8f / 30.0f;
+                    m.AutoAttackCastTime = 11.8f / 30.0f;
                     m.IsMelee = true;
                     break;
                 case MinionSpawnType.MINION_TYPE_CASTER:
@@ -489,7 +581,7 @@ namespace LeagueSandbox.GameServer.Maps
                     m.Stats.AttackDamage.BaseValue = 23.0f + 1.0f * (int)(_game.GameTime / (90 * 1000));
                     m.Stats.Range.BaseValue = 600.0f;
                     m.Stats.AttackSpeedFlat = 0.670f;
-                    m.AutoAttackDelay = 14.1f / 30.0f;
+                    m.AutoAttackCastTime = 14.1f / 30.0f;
                     m.AutoAttackProjectileSpeed = 650.0f;
                     break;
                 case MinionSpawnType.MINION_TYPE_CANNON:
@@ -498,7 +590,7 @@ namespace LeagueSandbox.GameServer.Maps
                     m.Stats.AttackDamage.BaseValue = 40.0f + 3.0f * (int)(_game.GameTime / (180 * 1000));
                     m.Stats.Range.BaseValue = 450.0f;
                     m.Stats.AttackSpeedFlat = 1.0f;
-                    m.AutoAttackDelay = 9.0f / 30.0f;
+                    m.AutoAttackCastTime = 9.0f / 30.0f;
                     m.AutoAttackProjectileSpeed = 1200.0f;
                     break;
                 case MinionSpawnType.MINION_TYPE_SUPER:
@@ -510,32 +602,32 @@ namespace LeagueSandbox.GameServer.Maps
                     m.Stats.Armor.BaseValue = 30.0f;
                     m.Stats.MagicResist.BaseValue = -30.0f;
                     m.IsMelee = true;
-                    m.AutoAttackDelay = 15.0f / 30.0f;
+                    m.AutoAttackCastTime = 15.0f / 30.0f;
                     break;
             }
         }
 
-        public void SpawnMinion(List<MinionSpawnType> list, int minionNo, MinionSpawnPosition pos, List<Vector2> waypoints)
+        public void SpawnMinion(List<MinionSpawnType> list, int minionNo, string barracksName, List<Vector2> waypoints)
         {
             if (list.Count <= minionNo)
             {
                 return;
             }
 
-            var m = new LaneMinion(_game, list[minionNo], pos, waypoints);
+            var m = new LaneMinion(_game, list[minionNo], barracksName, waypoints);
             _game.ObjectManager.AddObject(m);
         }
 
         public bool Spawn()
         {
-            var positions = new List<MinionSpawnPosition>
+            var barracks = new List<string>
             {
-                MinionSpawnPosition.SPAWN_BLUE_TOP,
-                MinionSpawnPosition.SPAWN_BLUE_BOT,
-                MinionSpawnPosition.SPAWN_BLUE_MID,
-                MinionSpawnPosition.SPAWN_RED_TOP,
-                MinionSpawnPosition.SPAWN_RED_BOT,
-                MinionSpawnPosition.SPAWN_RED_MID
+                Barracks.SPAWN_BLUE_TOP,
+                Barracks.SPAWN_BLUE_BOT,
+                Barracks.SPAWN_BLUE_MID,
+                Barracks.SPAWN_RED_TOP,
+                Barracks.SPAWN_RED_BOT,
+                Barracks.SPAWN_RED_MID
             };
 
             var cannonMinionTimestamps = new List<Tuple<long, int>>
@@ -545,14 +637,14 @@ namespace LeagueSandbox.GameServer.Maps
                 new Tuple<long, int>(35 * 60 * 1000, 0)
             };
 
-            var spawnToWaypoints = new Dictionary<MinionSpawnPosition, Tuple<List<Vector2>, uint>>
+            var spawnToWaypoints = new Dictionary<string, Tuple<List<Vector2>, uint>>
             {
-                {MinionSpawnPosition.SPAWN_BLUE_BOT, Tuple.Create(BlueBotWaypoints, 0xff26ac0f)},
-                {MinionSpawnPosition.SPAWN_BLUE_MID, Tuple.Create(BlueMidWaypoints, 0xffff8f1f)},
-                {MinionSpawnPosition.SPAWN_BLUE_TOP, Tuple.Create(BlueTopWaypoints, 0xff6793d0)},
-                {MinionSpawnPosition.SPAWN_RED_BOT, Tuple.Create(RedBotWaypoints, 0xff9303e1)},
-                {MinionSpawnPosition.SPAWN_RED_MID, Tuple.Create(RedMidWaypoints, 0xff4a20f1)},
-                {MinionSpawnPosition.SPAWN_RED_TOP, Tuple.Create(RedTopWaypoints, 0xffd23c3e)}
+                {Barracks.SPAWN_BLUE_BOT, Tuple.Create(BlueBotWaypoints, 0xff26ac0f)},
+                {Barracks.SPAWN_BLUE_MID, Tuple.Create(BlueMidWaypoints, 0xffff8f1f)},
+                {Barracks.SPAWN_BLUE_TOP, Tuple.Create(BlueTopWaypoints, 0xff6793d0)},
+                {Barracks.SPAWN_RED_BOT, Tuple.Create(RedBotWaypoints, 0xff9303e1)},
+                {Barracks.SPAWN_RED_MID, Tuple.Create(RedMidWaypoints, 0xff4a20f1)},
+                {Barracks.SPAWN_RED_TOP, Tuple.Create(RedTopWaypoints, 0xffd23c3e)}
             };
             var cannonMinionCap = 2;
 
@@ -564,10 +656,10 @@ namespace LeagueSandbox.GameServer.Maps
                 }
             }
 
-            foreach (var pos in positions)
+            foreach (var barracksName in barracks)
             {
-                var waypoints = spawnToWaypoints[pos].Item1;
-                var inhibitorId = spawnToWaypoints[pos].Item2;
+                var waypoints = spawnToWaypoints[barracksName].Item1;
+                var inhibitorId = spawnToWaypoints[barracksName].Item2;
                 var inhibitor = _game.ObjectManager.GetInhibitorById(inhibitorId);
                 var isInhibitorDead = inhibitor.InhibitorState == InhibitorState.DEAD && !inhibitor.RespawnAnnounced;
 
@@ -595,7 +687,7 @@ namespace LeagueSandbox.GameServer.Maps
                     list = DoubleSuperMinionWave;
                 }
 
-                SpawnMinion(list, _minionNumber, pos, waypoints);
+                SpawnMinion(list, _minionNumber, barracksName, waypoints);
             }
 
 
@@ -623,6 +715,12 @@ namespace LeagueSandbox.GameServer.Maps
             }
 
             return EndGameCameraPosition[team];
+        }
+
+        public void HandleSurrender(int userId, IChampion who, bool vote)
+        {
+            if (_surrenders.ContainsKey(who.Team))
+                _surrenders[who.Team].HandleSurrender(userId, who, vote);
         }
     }
 }

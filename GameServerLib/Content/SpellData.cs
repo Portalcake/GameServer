@@ -58,12 +58,12 @@ namespace LeagueSandbox.GameServer.Content
 
     public class SpellData : ISpellData
     {
-        private readonly Game _game;
+        private readonly ContentManager _contentManager;
         private readonly ILog _logger;
 
-        public SpellData(Game game)
+        public SpellData(ContentManager contentManager)
         {
-            _game = game;
+            _contentManager = contentManager;
             _logger = LoggerProvider.GetLogger();
         }
 
@@ -231,7 +231,12 @@ namespace LeagueSandbox.GameServer.Content
 
         public float GetCastTime()
         {
-            return (1.0f + DelayCastOffsetPercent) / 2.0f;
+            return (1.0f + DelayCastOffsetPercent) * 0.5f;
+        }
+
+        public float GetCastTimeTotal()
+        {
+            return (1.0f + DelayTotalTimePercent) * 2.0f;
         }
 
         public void Load(string name)
@@ -244,14 +249,12 @@ namespace LeagueSandbox.GameServer.Content
             var file = new ContentFile();
             try
             {
-                var path = _game.Config.ContentManager.GetSpellDataPath(name);
-                var text = File.ReadAllText(Path.GetFullPath(path));
-                file = JsonConvert.DeserializeObject<ContentFile>(text);
+                file = (ContentFile)_contentManager.GetContentFileFromJson("Spells", name);
             }
 
-            catch (ContentNotFoundException)
+            catch (ContentNotFoundException exception)
             {
-                _logger.Warn($"Spell data for {name} was not found.");
+                _logger.Warn(exception.Message);
                 return;
             }
 

@@ -11,6 +11,7 @@ using LeagueSandbox.GameServer.GameObjects.Missiles;
 using LeagueSandbox.GameServer.GameObjects.Other;
 using LeagueSandbox.GameServer.Packets;
 using LeagueSandbox.GameServer.Scripting.CSharp;
+using System.Collections.Generic;
 using System.Numerics;
 
 namespace LeagueSandbox.GameServer.GameObjects.Spells
@@ -18,7 +19,7 @@ namespace LeagueSandbox.GameServer.GameObjects.Spells
     public class Spell : ISpell
     {
 
-        public IChampion Owner { get; private set; }
+        public IObjAiBase Owner { get; private set; }
         public byte Level { get; private set; }
         public byte Slot { get; set; }
         public float CastTime { get; private set; } = 0;
@@ -30,7 +31,7 @@ namespace LeagueSandbox.GameServer.GameObjects.Spells
         public float CurrentCooldown { get; protected set; }
         public float CurrentCastTime { get; protected set; }
         public float CurrentChannelDuration { get; protected set; }
-        public uint FutureProjNetId { get; protected set; }
+        public Dictionary<uint, IProjectile> Projectiles { get; protected set; }
         public uint SpellNetId { get; protected set; }
 
         public IAttackableUnit Target { get; private set; }
@@ -42,6 +43,8 @@ namespace LeagueSandbox.GameServer.GameObjects.Spells
         private CSharpScriptEngine _scriptEngine;
         private Game _game;
         protected NetworkIdManager _networkIdManager;
+
+        private uint _futureProjNetId;
 
         private IGameScript _spellGameScript;
 
@@ -95,7 +98,8 @@ namespace LeagueSandbox.GameServer.GameObjects.Spells
             X2 = x2;
             Y2 = y2;
             Target = u;
-            FutureProjNetId = _networkIdManager.GetNewNetId();
+            _futureProjNetId = _networkIdManager.GetNewNetId();
+            Projectiles = new Dictionary<uint, IProjectile>();
             SpellNetId = _networkIdManager.GetNewNetId();
 
             if (SpellData.TargettingType == 1 && Target != null && Target.GetDistanceTo(Owner) > SpellData.CastRange[Level])
@@ -108,6 +112,7 @@ namespace LeagueSandbox.GameServer.GameObjects.Spells
             if (SpellData.GetCastTime() > 0 && (SpellData.Flags & (int)SpellFlag.SPELL_FLAG_INSTANT_CAST) == 0)
             {
                 Owner.SetPosition(Owner.X, Owner.Y); //stop moving serverside too. TODO: check for each spell if they stop movement or not
+                Owner.IsCastingSpell = true;
                 State = SpellState.STATE_CASTING;
                 CurrentCastTime = SpellData.GetCastTime();
             }
@@ -116,7 +121,7 @@ namespace LeagueSandbox.GameServer.GameObjects.Spells
                 FinishCasting();
             }
 
-            _game.PacketNotifier.NotifyCastSpell(_game.Map.NavGrid, this, new Vector2(x, y) , new Vector2(x2, y2), FutureProjNetId, SpellNetId);
+            _game.PacketNotifier.NotifyNPC_CastSpellAns(_game.Map.NavigationGrid, this, new Vector2(x, y) , new Vector2(x2, y2), _futureProjNetId);
             return true;
         }
 
@@ -134,7 +139,7 @@ namespace LeagueSandbox.GameServer.GameObjects.Spells
 
                 if (Slot < 4)
                 {
-                    _game.PacketNotifier.NotifySetCooldown(Owner, Slot, CurrentCooldown, GetCooldown());
+                    _game.PacketNotifier.NotifyCHAR_SetCooldown(Owner, Slot, CurrentCooldown, GetCooldown());
                 }
 
                 Owner.IsCastingSpell = false;
@@ -161,7 +166,7 @@ namespace LeagueSandbox.GameServer.GameObjects.Spells
 
             if (Slot < 4)
             {
-                _game.PacketNotifier.NotifySetCooldown(Owner, Slot, CurrentCooldown, GetCooldown());
+                _game.PacketNotifier.NotifyCHAR_SetCooldown(Owner, Slot, CurrentCooldown, GetCooldown());
             }
 
             Owner.IsCastingSpell = false;
@@ -216,50 +221,71 @@ namespace LeagueSandbox.GameServer.GameObjects.Spells
             }
 
             _spellGameScript.ApplyEffects(Owner, u, this, p);
+            if (p.IsToRemove())
+            {
+                Projectiles.Remove(p.NetId);
+            }
         }
 
         public void AddProjectile(string nameMissile, float fromX, float fromY, float toX, float toY, bool isServerOnly = false)
         {
+            ISpellData projectileSpellData = this._game.Config.ContentManager.GetSpellData(nameMissile);
+
             var p = new Projectile(
-                _game,
-                fromX,
-                fromY,
-                (int)SpellData.LineWidth,
-                Owner,
-                new Target(toX, toY),
-                this,
-                SpellData.MissileSpeed,
-                nameMissile,
-                SpellData.Flags,
-                FutureProjNetId
-            );
+                    _game,
+                    fromX,
+                    fromY,
+                    (int)projectileSpellData.LineWidth,
+                    Owner,
+                    new Target(toX, toY),
+                    this,
+                    projectileSpellData.MissileSpeed,
+                    nameMissile,
+                    projectileSpellData.Flags,
+                    _futureProjNetId,
+                    isServerOnly
+                );
+
+            Projectiles.Add(p.NetId, p);
+
             _game.ObjectManager.AddObject(p);
+
             if (!isServerOnly)
             {
-                _game.PacketNotifier.NotifyProjectileSpawn(p);
+                _game.PacketNotifier.NotifyMissileReplication(p);
             }
+
+            _futureProjNetId = _networkIdManager.GetNewNetId();
         }
 
         public void AddProjectileTarget(string nameMissile, ITarget target, bool isServerOnly = false)
         {
+            ISpellData projectileSpellData = this._game.Config.ContentManager.GetSpellData(nameMissile);
+
             var p = new Projectile(
                 _game,
                 Owner.X,
                 Owner.Y,
-                (int)SpellData.LineWidth,
+                (int)projectileSpellData.LineWidth,
                 Owner,
                 target,
                 this,
-                SpellData.MissileSpeed,
+                projectileSpellData.MissileSpeed,
                 nameMissile,
-                SpellData.Flags,
-                FutureProjNetId
+                projectileSpellData.Flags,
+                _futureProjNetId
             );
+
+            Projectiles.Add(p.NetId, p);
+
             _game.ObjectManager.AddObject(p);
+
             if (!isServerOnly)
             {
-                _game.PacketNotifier.NotifyProjectileSpawn(p);
+                _game.PacketNotifier.NotifyMissileReplication(p);
             }
+
+            _futureProjNetId = _networkIdManager.GetNewNetId();
         }
 
         public void AddLaser(string effectName, float toX, float toY, bool affectAsCastIsOver = true)
@@ -275,9 +301,11 @@ namespace LeagueSandbox.GameServer.GameObjects.Spells
                 effectName,
                 SpellData.Flags,
                 affectAsCastIsOver,
-                FutureProjNetId
+                _futureProjNetId
             );
+            Projectiles.Add(l.NetId, l);
             _game.ObjectManager.AddObject(l);
+            _futureProjNetId = _networkIdManager.GetNewNetId();
         }
 
         public void AddCone(string effectName, float toX, float toY, float angleDeg, bool affectAsCastIsOver = true)
@@ -294,9 +322,11 @@ namespace LeagueSandbox.GameServer.GameObjects.Spells
                 SpellData.Flags,
                 affectAsCastIsOver,
                 angleDeg,
-                FutureProjNetId
+                _futureProjNetId
             );
+            Projectiles.Add(c.NetId, c);
             _game.ObjectManager.AddObject(c);
+            _futureProjNetId = _networkIdManager.GetNewNetId();
         }
 
         public void SpellAnimation(string animName, IAttackableUnit target)
@@ -347,17 +377,30 @@ namespace LeagueSandbox.GameServer.GameObjects.Spells
             }
         }
 
+        public void SetLevel(byte toLevel)
+        {
+            if (toLevel <= 5)
+            {
+                Level = toLevel;
+            }
+
+            if (Slot < 4)
+            {
+                Owner.Stats.ManaCost[Slot] = SpellData.ManaCost[Level];
+            }
+        }
+
         public void SetCooldown(float newCd)
         {
             if (newCd <= 0)
             {
-                _game.PacketNotifier.NotifySetCooldown(Owner, Slot, 0, 0);
+                _game.PacketNotifier.NotifyCHAR_SetCooldown(Owner, Slot, 0, 0);
                 State = SpellState.STATE_READY;
                 CurrentCooldown = 0;
             }
             else
             {
-                _game.PacketNotifier.NotifySetCooldown(Owner, Slot, newCd, GetCooldown());
+                _game.PacketNotifier.NotifyCHAR_SetCooldown(Owner, Slot, newCd, GetCooldown());
                 State = SpellState.STATE_COOLDOWN;
                 CurrentCooldown = newCd;
             }

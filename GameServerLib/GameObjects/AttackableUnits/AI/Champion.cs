@@ -12,6 +12,7 @@ using LeagueSandbox.GameServer.Content;
 using LeagueSandbox.GameServer.GameObjects.Spells;
 using LeagueSandbox.GameServer.GameObjects.Stats;
 using LeagueSandbox.GameServer.Items;
+using LeagueSandbox.GameServer.Content.Navigation;
 
 namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
 {
@@ -83,9 +84,9 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
 
             for (short i = 0; i < CharData.Passives.Length; i++)
             {
-                if (!string.IsNullOrEmpty(CharData.Passives[i].PassiveLuaName))
+                if (!string.IsNullOrEmpty(CharData.Passives[i].PassiveAbilityName))
                 {
-                    Spells[(byte)(i + 14)] = new Spell(game, this, CharData.Passives[i].PassiveLuaName, (byte)(i + 14));
+                    Spells[(byte)(i + 14)] = new Spell(game, this, CharData.Passives[i].PassiveAbilityName, (byte)(i + 14));
                 }
             }
 
@@ -159,7 +160,7 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
         {
             return !HasCrowdControl(CrowdControlType.STUN) &&
                 !IsDashing &&
-                !IsCastingSpell &&
+                (GetBuffs().Count(x => x.OriginSpell.SpellData.CanMoveWhileChanneling) == GetBuffsCount() || !IsCastingSpell) &&
                 !IsDead &&
                 !HasCrowdControl(CrowdControlType.ROOT);
         }
@@ -167,6 +168,8 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
         public void UpdateMoveOrder(MoveOrder order)
         {
             MoveOrder = order;
+
+            ApiEventManager.OnChampionMove.Publish(this);
         }
 
         public bool CanCast()
@@ -227,6 +230,13 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
             l.Add(new Vector2(this.X, this.Y));
             this.SetWaypoints(l);
             _game.PacketNotifier.NotifyMovement(this);
+        }
+        
+        public void TeleportTo(float x, float y)
+        {
+            // @TODO: Maybe add a OnChampionTeleport event?
+            ApiEventManager.OnChampionMove.Publish(this);
+            base.TeleportTo(x, y);
         }
 
         public ISpell GetSpellBySlot(byte slot)
@@ -359,44 +369,18 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
             RespawnTimer = -1;
         }
 
+        public bool OnDisconnect()
+        {
+            this.StopChampionMovement();
+            this.SetWaypoints(_game.Map.NavigationGrid.GetPath(GetPosition(), _game.Map.MapProperties.GetRespawnLocation(Team).GetPosition()));
+
+            return true;
+        }
+
         public void Recall()
         {
             var spawnPos = GetRespawnPosition();
             TeleportTo(spawnPos.X, spawnPos.Y);
-        }
-
-        public int GetChampionHash()
-        {
-            var szSkin = "";
-
-            if (Skin < 10)
-            {
-                szSkin = "0" + Skin;
-            }
-            else
-            {
-                szSkin = Skin.ToString();
-            }
-
-            var hash = 0;
-            var gobj = "[Character]";
-
-            for (var i = 0; i < gobj.Length; i++)
-            {
-                hash = char.ToLower(gobj[i]) + 0x1003F * hash;
-            }
-
-            for (var i = 0; i < Model.Length; i++)
-            {
-                hash = char.ToLower(Model[i]) + 0x1003F * hash;
-            }
-
-            for (var i = 0; i < szSkin.Length; i++)
-            {
-                hash = char.ToLower(szSkin[i]) + 0x1003F * hash;
-            }
-
-            return hash;
         }
 
         public bool LevelUp()
@@ -548,10 +532,19 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
             Skin = skinNo;
         }
 
-        public void SetSpell(string name, byte slot, bool enabled)
+        public ISpell SetSpell(string name, byte slot, bool enabled)
         {
-            Spells[slot] = new Spell(_game, this, name, slot);
+            ISpell newSpell = new Spell(_game, this, name, slot);
+
+            if (Spells[slot] != null)
+            {
+                newSpell.SetLevel(Spells[slot].Level);
+            }
+
+            Spells[slot] = newSpell;
             Stats.SetSpellEnabled(slot, enabled);
+
+            return newSpell;
         }
 
         public void SwapSpells(byte slot1, byte slot2)

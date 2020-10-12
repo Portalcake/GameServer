@@ -14,24 +14,25 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
         /// </summary>
         protected List<Vector2> _mainWaypoints;
         protected int _curMainWaypoint;
-        public MinionSpawnPosition SpawnPosition { get; }
+        public string BarracksName { get; } // barracks name of the position
         public MinionSpawnType MinionSpawnType { get; }
 
         public LaneMinion(
             Game game,
             MinionSpawnType spawnType,
-            MinionSpawnPosition position,
+            string position,
             List<Vector2> mainWaypoints,
             uint netId = 0
         ) : base(game, null, 0, 0, "", "", 1100, netId)
         {
+            IsLaneMinion = true;
             MinionSpawnType = spawnType;
-            SpawnPosition = position;
+            BarracksName = position;
             _mainWaypoints = mainWaypoints;
             _curMainWaypoint = 0;
             _aiPaused = false;
 
-            var spawnSpecifics = _game.Map.MapProperties.GetMinionSpawnPosition(SpawnPosition);
+            var spawnSpecifics = _game.Map.MapProperties.GetMinionSpawnPosition(BarracksName);
             SetTeam(spawnSpecifics.Item1);
             SetPosition(spawnSpecifics.Item2.X, spawnSpecifics.Item2.Y);
 
@@ -62,7 +63,7 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
         public LaneMinion(
             Game game,
             MinionSpawnType spawnType,
-            MinionSpawnPosition position,
+            string position,
             uint netId = 0
         ) : this(game, spawnType, position, new List<Vector2>(), netId)
         {
@@ -77,75 +78,25 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
         public override void Update(float diff)
         {
             base.Update(diff);
-            if (!IsDead)
-            {
-                if (IsDashing || _aiPaused)
-                {
-                    Replication.Update();
-                    return;
-                }
-
-                if (ScanForTargets()) // returns true if we have a target
-                {
-                    if (!RecalculateAttackPosition())
-                    {
-                        KeepFocussingTarget(); // attack target
-                    }
-                }
-                else
-                {
-                    WalkToDestination(); // walk to destination (or target)
-                }
-            }
-            Replication.Update();
         }
 
-        // AI tasks
-        protected bool ScanForTargets()
+        public override bool AIMove()
         {
-            if(TargetUnit != null && !TargetUnit.IsDead)
+            if (base.AIMove())
             {
+                WalkToDestination();
                 return true;
             }
-            IAttackableUnit nextTarget = null;
-            var nextTargetPriority = 14;
-
-            var objects = _game.ObjectManager.GetObjects();
-            foreach (var it in objects.OrderBy(x => GetDistanceTo(x.Value) - Stats.Range.Total))//Find target closest to max attack range.
-            {
-                if (!(it.Value is IAttackableUnit u) ||
-                    u.IsDead ||
-                    u.Team == Team ||
-                    GetDistanceTo(u) > DETECT_RANGE ||
-                    !_game.ObjectManager.TeamHasVisionOn(Team, u))
-                    continue;
-
-                var priority = (int)ClassifyTarget(u);  // get the priority.
-                if (priority < nextTargetPriority) // if the priority is lower than the target we checked previously
-                {
-                    nextTarget = u;                // make him a potential target.
-                    nextTargetPriority = priority;
-                }
-            }
-
-            if (nextTarget != null) // If we have a target
-            {
-                TargetUnit = nextTarget; // Set the new target and refresh waypoints
-                _game.PacketNotifier.NotifySetTarget(this, nextTarget);
-                return true;
-            }
-
-            _game.PacketNotifier.NotifyStopAutoAttack(this);
-            IsAttacking = false;
-
             return false;
         }
 
-        protected void WalkToDestination()
+        // TODO: Override ScanForTargets and use unique LaneMinion AI
+
+        public void WalkToDestination()
         {
             if (_mainWaypoints.Count > _curMainWaypoint + 1)
             {
-                if (Waypoints.Count == 1 || CurWaypoint >= Waypoints.Count && ++_curMainWaypoint < _mainWaypoints.Count)
+                if (Waypoints.Count == 1 || WaypointIndex >= Waypoints.Count && ++_curMainWaypoint < _mainWaypoints.Count)
                 {
                     //CORE_INFO("Minion reached a point! Going to %f; %f", mainWaypoints[curMainWaypoint].X, mainWaypoints[curMainWaypoint].Y);
                     SetWaypoints(new List<Vector2>() { GetPosition(), _mainWaypoints[_curMainWaypoint] });
@@ -163,14 +114,6 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
             }
         }
 
-        protected void KeepFocussingTarget()
-        {
-            if (IsAttacking && (TargetUnit == null || TargetUnit.IsDead || GetDistanceTo(TargetUnit) > Stats.Range.Total))
-            // If target is dead or out of range
-            {
-                _game.PacketNotifier.NotifyStopAutoAttack(this);
-                IsAttacking = false;
-            }
-        }
+        // TODO: Override KeepFocusingTarget and use unique LaneMinion AI
     }
 }

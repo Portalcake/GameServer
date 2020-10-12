@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
@@ -8,11 +9,11 @@ namespace PacketDefinitions420.PacketDefinitions
 {
     internal static class Movement
     {
-        public static Pair<bool, bool> IsAbsolute(Vector2 vec)
+        public static Tuple<bool, bool> IsAbsolute(Vector2 vec)
         {
-            var ret = new Pair<bool, bool>();
-            ret.Item1 = vec.X < sbyte.MinValue || vec.X > sbyte.MaxValue;
-            ret.Item2 = vec.Y < sbyte.MinValue || vec.Y > sbyte.MaxValue;
+            var item1 = vec.X < sbyte.MinValue || vec.X > sbyte.MaxValue;
+            var item2 = vec.Y < sbyte.MinValue || vec.Y > sbyte.MaxValue;
+            var ret = new Tuple<bool, bool>(item1, item2);
 
             return ret;
         }
@@ -29,9 +30,8 @@ namespace PacketDefinitions420.PacketDefinitions
             }
         }
 
-        public static byte[] EncodeWaypoints(INavGrid navGrid, List<Vector2> waypoints)
+        public static byte[] EncodeWaypoints(INavigationGrid navGrid, List<Vector2> waypoints)
         {
-            var mapSize = navGrid.GetSize();
             var numCoords = waypoints.Count * 2;
 
             var maskBytes = new byte[(numCoords - 3) / 8 + 1];
@@ -44,7 +44,7 @@ namespace PacketDefinitions420.PacketDefinitions
             var coordinate = 0;
             foreach (var waypoint in waypoints)
             {
-                var curVector = new Vector2((waypoint.X - mapSize.X) / 2, (waypoint.Y - mapSize.Y) / 2);
+                var curVector = new Vector2((waypoint.X - navGrid.MiddleOfMap.X) / 2, (waypoint.Y - navGrid.MiddleOfMap.Y) / 2);
                 if (coordinate == 0)
                 {
                     tempBuffer.Write((short)curVector.X);

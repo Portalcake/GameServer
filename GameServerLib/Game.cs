@@ -51,13 +51,14 @@ namespace LeagueSandbox.GameServer
         public NetworkHandler<ICoreResponse> ResponseHandler { get; }
         public IPacketNotifier PacketNotifier { get; private set; }
         public IObjectManager ObjectManager { get; private set; }
+        public IProtectionManager ProtectionManager { get; private set; }
         public IMap Map { get; private set; }
         
         public Config Config { get; protected set; }
         protected const double REFRESH_RATE = 1000.0 / 30.0; // 30 fps
 
         // Object managers
-        internal ItemManager ItemManager { get; private set; }
+        public ItemManager ItemManager { get; private set; }
         // Other managers
         internal ChatCommandManager ChatCommandManager { get; private set; }
         public IPlayerManager PlayerManager { get; private set; }
@@ -69,10 +70,10 @@ namespace LeagueSandbox.GameServer
 
         private List<GameScriptTimer> _gameScriptTimers;
 
-        public Game(ItemManager itemManager)
+        public Game()
         {
             _logger = LoggerProvider.GetLogger();
-            ItemManager = itemManager;
+            ItemManager = new ItemManager();
             ChatCommandManager = new ChatCommandManager(this);
             NetworkIdManager = new NetworkIdManager();
             PlayerManager = new PlayerManager(this);
@@ -91,23 +92,13 @@ namespace LeagueSandbox.GameServer
             ChatCommandManager.LoadCommands();
 
             ObjectManager = new ObjectManager(this);
+            ProtectionManager = new ProtectionManager(this);
             Map = new Map(this);
             ApiFunctionManager.SetGame(this);
             ApiEventManager.SetGame(this);
             IsRunning = false;
 
-            _logger.Info("Loading C# Scripts");
-
-            LoadScripts();
-
             Map.Init();
-
-            _logger.Info("Add players");
-            foreach (var p in Config.Players)
-            {
-                _logger.Info("Player "+p.Value.Name+" Added: "+p.Value.Champion);
-                ((PlayerManager)PlayerManager).AddPlayer(p);
-            }
 
             _pauseTimer = new Timer
             {
@@ -121,8 +112,15 @@ namespace LeagueSandbox.GameServer
             // TODO: GameApp should send the Response/Request handlers
             _packetServer = server;
             // TODO: switch the notifier with ResponseHandler
-            PacketNotifier = new PacketNotifier(_packetServer.PacketHandlerManager, Map.NavGrid);
+            PacketNotifier = new PacketNotifier(_packetServer.PacketHandlerManager, Map.NavigationGrid);
             InitializePacketHandlers();
+
+            _logger.Info("Add players");
+            foreach (var p in Config.Players)
+            {
+                _logger.Info("Player " + p.Value.Name + " Added: " + p.Value.Champion);
+                ((PlayerManager)PlayerManager).AddPlayer(p);
+            }
 
             _logger.Info("Game is ready.");
         }
@@ -168,7 +166,9 @@ namespace LeagueSandbox.GameServer
 
         public bool LoadScripts()
         {
-            return ScriptEngine.LoadSubdirectoryScripts($"{Config.ContentPath}/{Config.GameConfig.GameMode}/");
+            var scriptLoadingResults = Config.ContentManager.LoadScripts();
+
+            return scriptLoadingResults;
         }
 
         public void GameLoop()
@@ -209,6 +209,7 @@ namespace LeagueSandbox.GameServer
         {
             GameTime += diff;
             ObjectManager.Update(diff);
+            ProtectionManager.Update(diff);
             Map.Update(diff);
             _gameScriptTimers.ForEach(gsTimer => gsTimer.Update(diff));
             _gameScriptTimers.RemoveAll(gsTimer => gsTimer.IsDead());
@@ -264,19 +265,6 @@ namespace LeagueSandbox.GameServer
             _pauseTimer.Enabled = false;
         }
 
-        public bool HandleDisconnect(int userId)
-        {
-            var peerinfo = PlayerManager.GetPeerInfo((ulong)userId);
-            if (peerinfo != null)
-            {
-                if (!peerinfo.IsDisconnected)
-                {
-                    PacketNotifier.NotifyUnitAnnounceEvent(UnitAnnounces.SUMMONER_DISCONNECTED, peerinfo.Champion);
-                }
-                peerinfo.IsDisconnected = true;
-            }
-            return true;
-        }
         private static List<T> GetInstances<T>(IGame g)
         {
             return Assembly.GetCallingAssembly()
