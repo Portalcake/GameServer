@@ -3,12 +3,13 @@ using GameServerCore;
 using GameServerCore.Domain.GameObjects;
 using LeagueSandbox.GameServer.GameObjects.Stats;
 using GameServerCore.Enums;
+using System.Numerics;
 
 namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
 {
     public class Minion : ObjAiBase, IMinion
     {
-        public string Name { get; }
+        public string Name { get; protected set; }
         public IObjAiBase Owner { get; } // We'll probably want to change this in the future
         public bool IsWard { get; protected set; }
         public bool IsPet { get; protected set; }
@@ -20,40 +21,32 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
         public Minion(
             Game game,
             IObjAiBase owner,
-            float x,
-            float y,
+            Vector2 position,
             string model,
             string name,
-            int visionRadius = 0,
-            uint netId = 0
-        ) : base(game, model, new Stats.Stats(), 40, x, y, visionRadius, netId)
+            uint netId = 0,
+            TeamId team = TeamId.TEAM_NEUTRAL
+        ) : base(game, model, new Stats.Stats(), 40, position, 1100, netId, team)
         {
             Name = name;
 
             Owner = owner;
 
-            if (!(Owner == null) && Owner is IChampion)
+            IsPet = false;
+            if (Owner != null)
             {
-                SetTeam(Owner.Team);
                 IsPet = true;
                 if (model == Owner.Model) // Placeholder, should be changed
                 {
                     IsClone = true;
                 }
             }
-            else
-            {
-                SetTeam(Team);
-                IsPet = false;
-            }
-            IsLaneMinion = false;
 
-            // Fix issues induced by having an empty model string
-            CollisionRadius = CharData.PathfindingCollisionRadius;
+            IsLaneMinion = false;
 
             SetVisibleByTeam(Team, true);
 
-            MoveOrder = MoveOrder.MOVE_ORDER_MOVE;
+            MoveOrder = OrderType.MoveTo;
 
             Replication = new ReplicationMinion(this);
         }
@@ -66,14 +59,7 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
         public override void OnAdded()
         {
             base.OnAdded();
-            if (!IsLaneMinion)
-            {
-                _game.PacketNotifier.NotifySpawn(this);
-            }
-            else
-            {
-                _game.PacketNotifier.NotifyLaneMinionSpawned((ILaneMinion)this, Team);
-            }
+            _game.PacketNotifier.NotifySpawn(this);
         }
 
         public override void Update(float diff)
@@ -81,11 +67,12 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
             base.Update(diff);
             if (!IsDead)
             {
-                if (IsDashing || _aiPaused)
+                if (MovementParameters != null || _aiPaused)
                 {
                     Replication.Update();
                     return;
                 }
+
                 AIMove();
             }
             Replication.Update();
@@ -111,42 +98,47 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
             {
                 return true;
             }
+
             IAttackableUnit nextTarget = null;
             var nextTargetPriority = 14;
-            var objects = _game.ObjectManager.GetObjects();
+            var nearestObjects = _game.Map.CollisionHandler.QuadDynamic.GetNearestObjects(this);
             //Find target closest to max attack range.
-            foreach (var it in objects.OrderBy(x => GetDistanceTo(x.Value) - Stats.Range.Total))
+            foreach (var it in nearestObjects.OrderBy(x => Vector2.DistanceSquared(Position, x.Position) - (Stats.Range.Total * Stats.Range.Total)))
             {
-                if (!(it.Value is IAttackableUnit u) ||
+                if (!(it is IAttackableUnit u) ||
                     u.IsDead ||
                     u.Team == Team ||
-                    GetDistanceTo(u) > DETECT_RANGE ||
+                    Vector2.DistanceSquared(Position, u.Position) > DETECT_RANGE * DETECT_RANGE ||
                     !_game.ObjectManager.TeamHasVisionOn(Team, u))
+                {
                     continue;
+                }
+
                 var priority = (int)ClassifyTarget(u);  // get the priority.
                 if (priority < nextTargetPriority) // if the priority is lower than the target we checked previously
                 {
-                    nextTarget = u;                // make him a potential target.
+                    nextTarget = u;                // make it a potential target.
                     nextTargetPriority = priority;
                 }
             }
+
             if (nextTarget != null) // If we have a target
             {
-                TargetUnit = nextTarget; // Set the new target and refresh waypoints
-                _game.PacketNotifier.NotifySetTarget(this, nextTarget);
+                // Set the new target and refresh waypoints
+                SetTargetUnit(nextTarget, true);
+
                 return true;
             }
-            _game.PacketNotifier.NotifyNPC_InstantStopAttack(this, false);
-            IsAttacking = false;
+
             return false;
         }
 
         protected void KeepFocusingTarget()
         {
-            if (IsAttacking && (TargetUnit == null || TargetUnit.IsDead || GetDistanceTo(TargetUnit) > Stats.Range.Total))
+            if (IsAttacking && (TargetUnit == null || TargetUnit.IsDead || Vector2.DistanceSquared(Position, TargetUnit.Position) > Stats.Range.Total * Stats.Range.Total))
             // If target is dead or out of range
             {
-                _game.PacketNotifier.NotifyNPC_InstantStopAttack(this, false);
+                _game.PacketNotifier.NotifyNPC_InstantStop_Attack(this, false);
                 IsAttacking = false;
             }
         }

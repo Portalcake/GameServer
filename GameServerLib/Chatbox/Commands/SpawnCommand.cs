@@ -36,6 +36,7 @@ namespace LeagueSandbox.GameServer.Chatbox.Commands
                 {
                     ChatCommandManager.SendDebugMsgFormatted(DebugMsgType.SYNTAXERROR);
                     ShowSyntax();
+                    return;
                 }
 
                 SpawnMinionsForTeam(team, userId);
@@ -44,31 +45,29 @@ namespace LeagueSandbox.GameServer.Chatbox.Commands
 
         public void SpawnMinionsForTeam(TeamId team, int userId)
         {
-            var spawnPositions = new Dictionary<TeamId, string>
-            {
-                [TeamId.TEAM_BLUE] = Barracks.SPAWN_BLUE_BOT,
-                [TeamId.TEAM_PURPLE] = Barracks.SPAWN_RED_BOT
-            };
-
-            var champion = _playerManager.GetPeerInfo((ulong)userId).Champion;
+            var championPos = _playerManager.GetPeerInfo(userId).Champion.Position;
             var random = new Random();
+
+            var casterModel = Game.Map.MapProperties.GetMinionModel(team, MinionSpawnType.MINION_TYPE_CASTER);
+            var cannonModel = Game.Map.MapProperties.GetMinionModel(team, MinionSpawnType.MINION_TYPE_CANNON);
+            var meleeModel = Game.Map.MapProperties.GetMinionModel(team, MinionSpawnType.MINION_TYPE_MELEE);
+            var superModel = Game.Map.MapProperties.GetMinionModel(team, MinionSpawnType.MINION_TYPE_SUPER);
 
             var minions = new[]
             {
-                new LaneMinion(Game, MinionSpawnType.MINION_TYPE_CASTER, spawnPositions[team]),
-                new LaneMinion(Game, MinionSpawnType.MINION_TYPE_CANNON, spawnPositions[team]),
-                new LaneMinion(Game, MinionSpawnType.MINION_TYPE_MELEE, spawnPositions[team]),
-                new LaneMinion(Game, MinionSpawnType.MINION_TYPE_SUPER, spawnPositions[team])
+                new Minion(Game, null, championPos, casterModel, casterModel, 0, team),
+                new Minion(Game, null, championPos, cannonModel, cannonModel, 0, team),
+                new Minion(Game, null, championPos, meleeModel, meleeModel, 0, team),
+                new Minion(Game, null, championPos, superModel, superModel, 0, team)
             };
 
             const int X = 400;
             foreach (var minion in minions)
             {
-                minion.SetPosition(champion.X + random.Next(-X, X), champion.Y + random.Next(-X, X));
+                minion.SetPosition(championPos.X + random.Next(-X, X), championPos.Y + random.Next(-X, X));
                 minion.PauseAi(true);
-                minion.SetWaypoints(
-                    new List<Vector2> {new Vector2(minion.X, minion.Y), new Vector2(minion.X, minion.Y)});
-                minion.SetVisibleByTeam(team, true);
+                minion.StopMovement();
+                minion.UpdateMoveOrder(OrderType.Hold);
                 Game.ObjectManager.AddObject(minion);
             }
         }

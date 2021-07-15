@@ -1,29 +1,45 @@
-﻿using System.Numerics;
+﻿using GameServerCore.Enums;
+using System.Numerics;
 
 namespace GameServerCore.Domain.GameObjects
 {
+    /// <summary>
+    /// Interface for the GameObject of type Particle. The Particle class is used for all in-game visual effects meant to be explicitly networked by the server (never spawned client-side).
+    /// </summary>
     public interface IParticle : IGameObject
     {
         /// <summary>
-        /// Object which spawned or caused the particle to be instanced
+        /// Creator of this particle.
         /// </summary>
-        IGameObject Owner { get; }
+        IGameObject Caster { get; }
+        /// <summary>
+        /// Primary bind object.
+        /// </summary>
+        IGameObject BindObject { get; }
         /// <summary>
         /// Client-sided, internal name of the particle used in networking, usually always ends in .troy
         /// </summary>
         string Name { get; }
         /// <summary>
+        /// GameObject this particle is currently attached to. Null when not attached to anything.
+        /// </summary>
+        IGameObject TargetObject { get; }
+        /// <summary>
+        /// Position this object is spawned at. *NOTE*: Does not update. Refer to TargetObject.GetPosition() if particle is supposed to be attached.
+        /// </summary>
+        Vector2 TargetPosition { get; }
+        /// <summary>
         /// Client-sided, internal name of the bone that this particle should be attached to for networking
         /// </summary>
         string BoneName { get; }
         /// <summary>
+        /// Client-sided, internal name of the bone that this particle should be attached to on the target, for networking.
+        /// </summary>
+        string TargetBoneName { get; }
+        /// <summary>
         /// Scale of the particle used in networking
         /// </summary>
         float Scale { get; }
-        /// <summary>
-        /// 3 dimensional forward vector (where the particle faces) used in networking
-        /// </summary>
-        Vector3 Direction { get; }
         /// <summary>
         /// Total game-time that this particle should exist for
         /// </summary>
@@ -34,6 +50,15 @@ namespace GameServerCore.Domain.GameObjects
         /// true = visibility can be obstructed
         /// </summary>
         bool VisionAffected { get; }
+        /// <summary>
+        /// The only team that should be able to see this particle.
+        /// </summary>
+        TeamId SpecificTeam { get; }
+        /// <summary>
+        /// Whether or not the particle should be titled along the ground towards its end position.
+        /// Effectively uses the ground height for the end position.
+        /// </summary>
+        bool FollowsGroundTilt { get; }
 
         /// <summary>
         /// Returns the total game-time passed since the particle was added to ObjectManager

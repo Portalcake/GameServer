@@ -10,7 +10,6 @@ namespace LeagueSandbox.GameServer.GameObjects
     public class Monster : Minion, IMonster
     {
         public Vector2 Facing { get; private set; }
-        public string Name { get; private set; }
         public string SpawnAnimation { get; private set; }
         public byte CampId { get; private set; }
         public byte CampUnk { get; private set; }
@@ -18,10 +17,8 @@ namespace LeagueSandbox.GameServer.GameObjects
 
         public Monster(
             Game game,
-            float x,
-            float y,
-            float facingX,
-            float facingY,
+            Vector2 position,
+            Vector2 facing,
             string model,
             string name,
             string spawnAnimation = "",
@@ -29,18 +26,16 @@ namespace LeagueSandbox.GameServer.GameObjects
             byte campUnk = 0x2A,
             float spawnAnimationTime = 0.0f,
             uint netId = 0
-        ) : base(game, null, x, y, model, name, 0, netId)
+        ) : base(game, null, position, model, name, netId)
         {
-            SetTeam(TeamId.TEAM_NEUTRAL);
-
             var teams = Enum.GetValues(typeof(TeamId)).Cast<TeamId>();
             foreach (var team in teams)
             {
                 SetVisibleByTeam(team, true);
             }
 
-            MoveOrder = MoveOrder.MOVE_ORDER_MOVE;
-            Facing = new Vector2(facingX, facingY);
+            MoveOrder = OrderType.MoveTo;
+            Facing = facing;
             Name = name;
             SpawnAnimation = spawnAnimation;
             CampId = campId;

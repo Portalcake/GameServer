@@ -1,17 +1,26 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Numerics;
+using System.Reflection;
 using GameServerCore.Domain;
+using GameServerCore.Enums;
 using LeagueSandbox.GameServer.Content;
 using Newtonsoft.Json.Linq;
 
 namespace LeagueSandbox.GameServer
 {
+    /// <summary>
+    /// Class that contains basic game information which is used to decide how the game will function after starting, such as players, their spawns,
+    /// the packages which control the functionality of their champions/abilities, and lastly whether basic game mechanics such as 
+    /// cooldowns/mana costs/minion spawns should be enabled/disabled.
+    /// </summary>
     public class Config
     {
         public Dictionary<string, PlayerConfig> Players { get; private set; }
         public GameConfig GameConfig { get; private set; }
+        public MapData MapData { get; private set; }
         public MapSpawns MapSpawns { get; private set; }
         public ContentManager ContentManager { get; private set; }
         public const string VERSION_STRING = "Version 4.20.0.315 [PUBLIC]";
@@ -53,8 +62,7 @@ namespace LeagueSandbox.GameServer
             foreach (var player in playerConfigurations)
             {
                 var playerConfig = new PlayerConfig(player);
-                var playerNum = Players.Count + 1;
-                Players.Add($"player{playerNum}", playerConfig);
+                Players.Add($"player{playerConfig.PlayerID}", playerConfig);
             }
 
             // Read cost/cd info
@@ -71,8 +79,14 @@ namespace LeagueSandbox.GameServer
             // Read where the content is
             ContentPath = (string)gameInfo.SelectToken("CONTENT_PATH");
 
+            // Evaluate if content path is correct, if not try to path traversal to find it
+            if (!Directory.Exists(ContentPath))
+            {
+                ContentPath = GetContentPath();
+            }
+
             // Read global damage text setting
-            IsDamageTextGlobal = (bool) gameInfo.SelectToken("IS_DAMAGE_TEXT_GLOBAL");
+            IsDamageTextGlobal = (bool)gameInfo.SelectToken("IS_DAMAGE_TEXT_GLOBAL");
 
             // Read the game configuration
             var gameToken = data.SelectToken("game");
@@ -81,8 +95,242 @@ namespace LeagueSandbox.GameServer
             // Load data package
             ContentManager = ContentManager.LoadDataPackage(game, GameConfig.DataPackage, ContentPath);
 
-            // Read spawns info
+            // Read data & spawns info
+            MapData = ContentManager.GetMapData(GameConfig.Map);
             MapSpawns = ContentManager.GetMapSpawns(GameConfig.Map);
+        }
+
+        private string GetContentPath()
+        {
+            string result = null;
+
+            var executionDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+            var path = new DirectoryInfo(executionDirectory ?? Directory.GetCurrentDirectory());
+
+            while (result == null)
+            {
+                if (path == null)
+                {
+                    break;
+                }
+
+                var directory = path.GetDirectories().Where(c => c.Name.Equals("Content")).ToArray();
+
+                if (directory.Length == 1)
+                {
+                    result = directory[0].FullName;
+                }
+                else
+                {
+                    path = path.Parent;
+                }
+            }
+
+            return result;
+        }
+    }
+
+    public class MapData
+    {
+        public int Id { get; private set; }
+        /// <summary>
+        /// Collection of MapObjects present within a map's room file, with the key being the name present in the room file. Refer to <see cref="MapObject"/>.
+        /// </summary>
+        public Dictionary<string, MapObject> MapObjects { get; private set; }
+        /// <summary>
+        /// Collection of MapObjects which represent lane minion spawn positions.
+        /// Not present within the room file, therefor it is split into its own collection.
+        /// </summary>
+        public Dictionary<string, MapObject> SpawnBarracks { get; private set; }
+        /// <summary>
+        /// Experience required to level, ordered from 2 and up.
+        /// </summary>
+        public List<float> ExpCurve { get; private set; }
+        /// <summary>
+        /// Amount of time death should last depending on level.
+        /// </summary>
+        public List<float> DeathTimes { get; private set; }
+        /// <summary>
+        /// Potential progression of stats per-level of jungle monsters.
+        /// </summary>
+        /// TODO: Figure out what this is and how to implement it.
+        public List<float> StatsProgression { get; private set; }
+
+        public MapData(int mapId)
+        {
+            Id = mapId;
+            MapObjects = new Dictionary<string, MapObject>();
+            SpawnBarracks = new Dictionary<string, MapObject>();
+            ExpCurve = new List<float>();
+            DeathTimes = new List<float>();
+            StatsProgression = new List<float>();
+        }
+
+        public class MapObject
+        {
+            public string Name { get; private set; }
+            public Vector3 CentralPoint { get; private set; }
+            public int ParentMapId { get; private set; }
+
+            public MapObject(string name, Vector3 point, int id)
+            {
+                Name = name;
+                CentralPoint = point;
+                ParentMapId = id;
+            }
+
+            public GameObjectTypes GetGameObjectType()
+            {
+                GameObjectTypes type = 0;
+
+                if (Name.Contains("LevelProp"))
+                {
+                    type = GameObjectTypes.LevelProp;
+                }
+                else if (Name.Contains("HQ"))
+                {
+                    type = GameObjectTypes.ObjAnimated_HQ;
+                }
+                else if (Name.Contains("Barracks"))
+                {
+                    // Inhibitors are dampeners for the enemy Nexus.
+                    type = GameObjectTypes.ObjAnimated_BarracksDampener;
+                }
+                else if (Name.Contains("Turret"))
+                {
+                    type = GameObjectTypes.ObjAIBase_Turret;
+                }
+
+                return type;
+            }
+
+            public TeamId GetTeamID()
+            {
+                var team = TeamId.TEAM_NEUTRAL;
+
+                if (Name.Contains("T1") || Name.Contains("Order"))
+                {
+                    team = TeamId.TEAM_BLUE;
+                }
+                else if (Name.Contains("T2") || Name.Contains("Chaos"))
+                {
+                    team = TeamId.TEAM_PURPLE;
+                }
+
+                return team;
+            }
+
+            public TeamId GetOpposingTeamID()
+            {
+                var team = TeamId.TEAM_NEUTRAL;
+
+                if (Name.Contains("T1") || Name.Contains("Order"))
+                {
+                    team = TeamId.TEAM_PURPLE;
+                }
+                else if (Name.Contains("T2") || Name.Contains("Chaos"))
+                {
+                    team = TeamId.TEAM_BLUE;
+                }
+
+                return team;
+            }
+
+            public string GetTeamName()
+            {
+                string teamName = "";
+                if (GetTeamID() == TeamId.TEAM_BLUE)
+                {
+                    teamName = "Order";
+                }
+                // Chaos and Neutral
+                else
+                {
+                    teamName = "Chaos";
+                }
+
+                return teamName;
+            }
+
+            public LaneID GetLaneID()
+            {
+                var laneId = LaneID.NONE;
+
+                if (Name.Contains("_L"))
+                {
+                    laneId = LaneID.TOP;
+                }
+                else if (Name.Contains("_C"))
+                {
+                    laneId = LaneID.MIDDLE;
+                }
+                else if (Name.Contains("_R"))
+                {
+                    laneId = LaneID.BOTTOM;
+                }
+
+                return laneId;
+            }
+
+            public LaneID GetSpawnBarrackLaneID()
+            {
+                var laneId = LaneID.NONE;
+
+                if (Name.Contains("__L"))
+                {
+                    laneId = LaneID.TOP;
+                }
+                else if (Name.Contains("__C"))
+                {
+                    laneId = LaneID.MIDDLE;
+                }
+                else if (Name.Contains("__R"))
+                {
+                    laneId = LaneID.BOTTOM;
+                }
+
+                return laneId;
+            }
+
+            public int ParseIndex()
+            {
+                int index = -1;
+
+                if (GetGameObjectType() == 0)
+                {
+                    return index;
+                }
+
+                var underscoreIndices = new List<int>();
+
+                // While there are underscores, it loops,
+                for (int i = Name.IndexOf('_'); i > -1; i = Name.IndexOf('_', i + 1))
+                {
+                    // and ends when i = -1 (no underscore found).
+                    underscoreIndices.Add(i);
+                }
+
+                // If the above failed to find any underscores or the underscore is the last character in the string.
+                if (underscoreIndices.Count == 0 || underscoreIndices.Last() == underscoreIndices.Count)
+                {
+                    return index;
+                }
+
+                // Otherwise, we make a new string which starts at the last underscore (+1 character to the right),
+                string startString = Name.Substring(underscoreIndices.Last() + 1);
+
+                // and we check it for an index.
+                try
+                {
+                    index = int.Parse(startString);
+                }
+                catch (FormatException)
+                {
+                    return index;
+                }
+
+                return index;
+            }
         }
     }
 
@@ -135,7 +383,7 @@ namespace LeagueSandbox.GameServer
 
     public class PlayerConfig
     {
-        public ulong PlayerID => (ulong)_playerData.SelectToken("playerId");
+        public long PlayerID => (long)_playerData.SelectToken("playerId");
         public string Rank => (string)_playerData.SelectToken("rank");
         public string Name => (string)_playerData.SelectToken("name");
         public string Champion => (string)_playerData.SelectToken("champion");

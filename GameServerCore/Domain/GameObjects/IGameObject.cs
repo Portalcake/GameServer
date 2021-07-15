@@ -4,63 +4,58 @@ using GameServerCore.Enums;
 
 namespace GameServerCore.Domain.GameObjects
 {
-    public interface IGameObject : ITarget, IUpdate
+    /// <summary>
+    /// Base class for all objects in League of Legends.
+    /// GameObjects normally follow these guidelines of functionality: Position, Collision, Vision, Team, and Networking.
+    /// </summary>
+    public interface IGameObject : IUpdate
     {
+        // Structure follows hierarchy of features (ex: an object is defined as collide-able before walk-able)
+
         /// <summary>
         ///  Identifier unique to this game object.
         /// </summary>
         uint NetId { get; }
         /// <summary>
-        /// Waypoints that make up the path a game object is walking in.
+        /// Radius of the circle which is used for collision detection between objects or terrain.
         /// </summary>
-        List<Vector2> Waypoints { get; }
+        float CollisionRadius { get; }
         /// <summary>
-        /// Index of the waypoint in the list of waypoints that the object is current on.
+        /// Position of this GameObject from a top-down view.
         /// </summary>
-        int WaypointIndex { get; }
+        Vector2 Position { get; }
         /// <summary>
-        /// Current target the game object is looking/attacking/moving to (can be coordinates or an object).
+        /// 3D orientation of this GameObject (based on ground-level).
         /// </summary>
-        ITarget Target { get; }
+        Vector3 Direction { get; }
+        /// <summary>
+        /// Used to synchronize movement between client and server. Is currently assigned Env.TickCount.
+        /// </summary>
+        int SyncId { get; }
         /// <summary>
         /// Team identifier, refer to TeamId enum.
         /// </summary>
         TeamId Team { get; }
         /// <summary>
-        /// Radius of the circle which is used for collision detection between objects or terrain.
-        /// </summary>
-        float CollisionRadius { get; }
-        /// <summary>
         /// Radius of the circle which is used for vision; detecting if objects are visible given terrain, and if so, networked to the player (or team) that owns this game object.
         /// </summary>
         float VisionRadius { get; }
-        /// <summary>
-        /// Used to synchronize movement between client and server. Is currently assigned Env.TickCount.
-        /// </summary>
-        uint SyncId { get; }
-        /// <summary>
-        /// Refers to the height that the object is at in 3D space. *NOTE* Should be renamed.
-        /// </summary>
-        // TODO: Change this to property
-        float GetZ();
-        /// <summary>
-        /// Returns the units that the game object travels each second. Default 0 unless overriden.
-        /// </summary>
-        float GetMoveSpeed();
 
         /// <summary>
-        /// Called every update after the object sets its waypoints.
-        /// </summary>
-        void ClearMovementUpdated();
-
-        /// <summary>
-        /// Called by ObjectManager after AddObject.
+        /// Called by ObjectManager after AddObject (usually right after instatiation of GameObject).
         /// </summary>
         void OnAdded();
+
         /// <summary>
-        /// Called when the object is ontop of another object or when the object is inside terrain.
+        /// Whether or not the object should be removed from the game (usually both server and client-side). Refer to ObjectManager.
         /// </summary>
-        void OnCollision(IGameObject collider);
+        bool IsToRemove();
+
+        /// <summary>
+        /// Will cause ObjectManager to remove the object (usually) both server-side and client-side next update.
+        /// </summary>
+        void SetToRemove();
+
         /// <summary>
         /// Called by ObjectManager after the object has been SetToRemove.
         /// </summary>
@@ -70,54 +65,93 @@ namespace GameServerCore.Domain.GameObjects
         /// Sets the server-sided position of this object.
         /// </summary>
         void SetPosition(float x, float y);
+
         /// <summary>
         /// Sets the server-sided position of this object.
         /// </summary>
         void SetPosition(Vector2 vec);
-        void SetTeam(TeamId team);
+
         /// <summary>
-        /// Will cause ObjectManager to remove the object (usually) both server and client-side next update.
+        /// Sets the collision radius of this GameObject.
         /// </summary>
-        void SetToRemove();
+        /// <param name="newRadius">Radius to set.</param>
+        void SetCollisionRadius(float newRadius);
+
         /// <summary>
-        /// Will force the object to be networked to the specified team.
+        /// Refers to the height that the object is at in 3D space.
         /// </summary>
-        void SetVisibleByTeam(TeamId team, bool visible);
+        float GetHeight();
+
         /// <summary>
-        /// Returns the waypoint that the object is currently moving to.
+        /// Gets the position of this GameObject in 3D space, where the Y value represents height.
+        /// Mostly used for packets.
         /// </summary>
-        Vector2 GetNextWaypoint();
-        /// <summary>
-        /// Returns the vector which represents the 2d orientation that the object is moving in.
-        /// </summary>
-        Vector2 GetDirection();
-        /// <summary>
-        /// Whether or not the object has reached its final waypoint.
-        /// </summary>
-        bool IsPathEnded();
-        /// <summary>
-        /// Sets the object's path to the newWaypoints
-        /// </summary>
-        /// <param name="newWaypoints">New path of Vector2 coordinates that the unit will move to.</param>
-        void SetWaypoints(List<Vector2> newWaypoints);
+        /// <returns>Vector3 position.</returns>
+        Vector3 GetPosition3D();
 
         /// <summary>
         /// Whether or not the specified object is colliding with this object.
         /// </summary>
         /// <param name="o">An object that could be colliding with this object.</param>
         bool IsCollidingWith(IGameObject o);
+
         /// <summary>
-        /// Whether or not the object has changed its waypoints since the last game update.
+        /// Called by ObjectManager when the object is ontop of another object or when the object is inside terrain.
         /// </summary>
-        bool IsMovementUpdated();
+        void OnCollision(IGameObject collider, bool isTerrain = false);
+
         /// <summary>
-        /// Whether or not the object should be removed from the game (usually both server and client-side). Refer to ObjectManager.
+        /// Sets the object's team.
         /// </summary>
-        bool IsToRemove();
+        /// <param name="team">TeamId.BLUE/PURPLE/NEUTRAL</param>
+        void SetTeam(TeamId team);
+
+        /// <summary>
+        /// Sets this GameObject's current orientation (only X and Z are used in movement).
+        /// </summary>
+        void FaceDirection(Vector3 newDirection, bool isInstant = true, float turnTime = 0.08333f);
+
         /// <summary>
         /// Whether or not the object is networked to a specified team.
         /// </summary>
         /// <param name="team">A team which could have vision of this object.</param>
         bool IsVisibleByTeam(TeamId team);
+
+        /// <summary>
+        /// Sets the object to be networked or not to a specified team.
+        /// </summary>
+        /// <param name="team">A team which could have vision of this object.</param>
+        /// <param name="visible">true/false; networked or not</param>
+        void SetVisibleByTeam(TeamId team, bool visible);
+
+        /// <summary>
+        /// Sets the position of this GameObject to the specified position.
+        /// </summary>
+        /// <param name="x">X coordinate to set.</param>
+        /// <param name="y">Y coordinate to set.</param>
+        void TeleportTo(float x, float y);
+        /// <summary>
+        /// Forces this GameObject to perform the given internally named animation.
+        /// </summary>
+        /// <param name="animName">Internal name of an animation to play.</param>
+        /// <param name="timeScale">How fast the animation should play. Default 1x speed.</param>
+        /// <param name="startTime">Time in the animation to start at.</param>
+        /// TODO: Verify if this description is correct, if not, correct it.
+        /// <param name="speedScale">How much the speed of the GameObject should affect the animation.</param>
+        /// <param name="flags">Animation flags. Refer to AnimationFlags enum.</param>
+        void PlayAnimation(string animName, float timeScale = 1.0f, float startTime = 0, float speedScale = 0, AnimationFlags flags = 0);
+        /// <summary>
+        /// Forces the GameObject's current animations to pause/unpause.
+        /// </summary>
+        /// <param name="pause">Whether or not to pause/unpause animations.</param>
+        void PauseAnimation(bool pause);
+        /// <summary>
+        /// Forces this GameObject to stop playing the specified animation (or optionally all animations) with the given parameters.
+        /// </summary>
+        /// <param name="animation">Internal name of the animation to stop playing. Set blank/null if stopAll is true.</param>
+        /// <param name="stopAll">Whether or not to stop all animations. Only works if animation is empty/null.</param>
+        /// <param name="fade">Whether or not the animation should fade before stopping.</param>
+        /// <param name="ignoreLock">Whether or not locked animations should still be stopped.</param>
+        void StopAnimation(string animation, bool stopAll = false, bool fade = false, bool ignoreLock = true);
     }
 }

@@ -1,9 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using GameServerCore.Content;
 using GameServerCore.Domain;
+using GameServerCore.Domain.GameObjects.Spell;
 using LeagueSandbox.GameServer.Logging;
 using log4net;
 using Newtonsoft.Json.Linq;
@@ -14,11 +14,11 @@ namespace LeagueSandbox.GameServer.Content
     {
         private readonly ILog _logger;
         private readonly Game _game;
-        private readonly string _contentPath;
 
         private readonly List<Package> _loadedPackages;
         private readonly List<string> _dataPackageNames;
 
+        public string ContentPath { get; }
         public string PackageName { get; }
         public string PackagePath { get; }
 
@@ -26,7 +26,7 @@ namespace LeagueSandbox.GameServer.Content
         {
             _game = game;
 
-            _contentPath = contentPath;
+            ContentPath = contentPath;
 
             _loadedPackages = new List<Package>();
             _dataPackageNames = new List<string>{dataPackageName};
@@ -96,7 +96,7 @@ namespace LeagueSandbox.GameServer.Content
 
         private string GetPackagePath(string packageName)
         {
-            return $"{_contentPath}/{packageName}";
+            return $"{ContentPath}/{packageName}";
         }
 
         public bool LoadScripts()
@@ -109,6 +109,23 @@ namespace LeagueSandbox.GameServer.Content
             }
 
             return packageLoadingResults.Contains(false);
+        }
+
+        public MapData GetMapData(int mapId)
+        {
+            foreach (var dataPackage in _loadedPackages)
+            {
+                var toReturnMapData = dataPackage.GetMapData(mapId);
+
+                if (toReturnMapData == null)
+                {
+                    continue;
+                }
+
+                return toReturnMapData;
+            }
+
+            throw new ContentNotFoundException($"No map data found for map with id: {mapId}");
         }
 
         public MapSpawns GetMapSpawns(int mapId)
@@ -128,11 +145,11 @@ namespace LeagueSandbox.GameServer.Content
             throw new ContentNotFoundException($"No map spawns found for map with id: {mapId}");
         }
 
-        public IContentFile GetContentFileFromJson(string contentType, string itemName)
+        public IContentFile GetContentFileFromJson(string contentType, string itemName, string subPath = null)
         {
             foreach (var dataPackage in _loadedPackages)
             {
-                var toReturnContentFile = dataPackage.GetContentFileFromJson(contentType, itemName);
+                var toReturnContentFile = dataPackage.GetContentFileFromJson(contentType, itemName, subPath);
 
                 if (toReturnContentFile == null)
                 {

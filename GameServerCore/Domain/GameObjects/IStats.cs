@@ -12,8 +12,8 @@ namespace GameServerCore.Domain.GameObjects
         bool IsInvulnerable { get; }
         bool IsPhysicalImmune { get; }
         bool IsLifestealImmune { get; }
-        bool IsTargetable { get; }
-        SpellFlags IsTargetableToTeam { get; set; }
+        bool IsTargetable { get; set; }
+        SpellDataFlags IsTargetableToTeam { get; set; }
         float AttackSpeedFlat { get; set; }
         float HealthPerLevel { get; }
         float ManaPerLevel { get; }

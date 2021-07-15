@@ -2,7 +2,6 @@
 using GameServerCore.Domain.GameObjects;
 using GameServerCore.Enums;
 using LeagueSandbox.GameServer.Content;
-using LeagueSandbox.GameServer.GameObjects.Spells;
 
 namespace LeagueSandbox.GameServer.GameObjects.Stats
 {
@@ -18,8 +17,8 @@ namespace LeagueSandbox.GameServer.GameObjects.Stats
         public bool IsInvulnerable { get; set; }
         public bool IsPhysicalImmune { get; set; }
         public bool IsLifestealImmune { get; set; }
-        public bool IsTargetable { get; }
-        public SpellFlags IsTargetableToTeam { get; set; }
+        public bool IsTargetable { get; set; }
+        public SpellDataFlags IsTargetableToTeam { get; set; }
 
         public float AttackSpeedFlat { get; set; }
         public float HealthPerLevel { get; set; }
@@ -36,7 +35,7 @@ namespace LeagueSandbox.GameServer.GameObjects.Stats
         public IStat Armor { get; }
         public IStat ArmorPenetration { get; }
         public IStat AttackDamage { get; }
-        public IStat AttackSpeedMultiplier { get; }
+        public IStat AttackSpeedMultiplier { get; set; }
         public IStat CooldownReduction { get; }
         public IStat CriticalChance { get; }
         public IStat CriticalDamage { get; }
@@ -81,7 +80,7 @@ namespace LeagueSandbox.GameServer.GameObjects.Stats
             ManaCost = new float[64];
             ActionState = ActionState.CAN_ATTACK | ActionState.CAN_CAST | ActionState.CAN_MOVE | ActionState.UNKNOWN;
             IsTargetable = true;
-            IsTargetableToTeam = SpellFlags.TargetableToAll;
+            IsTargetableToTeam = SpellDataFlags.TargetableToAll;
 
             AbilityPower = new Stat();
             Armor = new Stat();
@@ -117,7 +116,8 @@ namespace LeagueSandbox.GameServer.GameObjects.Stats
             MagicResist.BaseValue = charData.SpellBlock;
             HealthRegeneration.BaseValue = charData.BaseStaticHpRegen;
             ManaRegeneration.BaseValue = charData.BaseStaticMpRegen;
-            AttackSpeedFlat = 0.625f / (1 + charData.AttackDelayOffsetPercent);
+            // AttackSpeedFlat = GlobalAttackSpeed / CharAttackDelay
+            AttackSpeedFlat = (1.0f / charData.GlobalCharData.AttackDelay) / (1.0f + charData.AttackDelayOffsetPercent[0]);
             HealthPerLevel = charData.HpPerLevel;
             ManaPerLevel = charData.MpPerLevel;
             AdPerLevel = charData.DamagePerLevel;
@@ -131,50 +131,50 @@ namespace LeagueSandbox.GameServer.GameObjects.Stats
 
         public void AddModifier(IStatsModifier modifier)
         {
-            AbilityPower.ApplyStatModificator(modifier.AbilityPower);
-            Armor.ApplyStatModificator(modifier.Armor);
-            ArmorPenetration.ApplyStatModificator(modifier.ArmorPenetration);
-            AttackDamage.ApplyStatModificator(modifier.AttackDamage);
-            AttackSpeedMultiplier.ApplyStatModificator(modifier.AttackSpeed);
-            CriticalChance.ApplyStatModificator(modifier.CriticalChance);
-            CriticalDamage.ApplyStatModificator(modifier.CriticalDamage);
-            GoldPerSecond.ApplyStatModificator(modifier.GoldPerSecond);
-            HealthPoints.ApplyStatModificator(modifier.HealthPoints);
-            HealthRegeneration.ApplyStatModificator(modifier.HealthRegeneration);
-            LifeSteal.ApplyStatModificator(modifier.LifeSteal);
-            MagicResist.ApplyStatModificator(modifier.MagicResist);
-            MagicPenetration.ApplyStatModificator(modifier.MagicPenetration);
-            ManaPoints.ApplyStatModificator(modifier.ManaPoints);
-            ManaRegeneration.ApplyStatModificator(modifier.ManaRegeneration);
-            MoveSpeed.ApplyStatModificator(modifier.MoveSpeed);
-            Range.ApplyStatModificator(modifier.Range);
-            Size.ApplyStatModificator(modifier.Size);
-            SpellVamp.ApplyStatModificator(modifier.SpellVamp);
-            Tenacity.ApplyStatModificator(modifier.Tenacity);
+            AbilityPower.ApplyStatModifier(modifier.AbilityPower);
+            Armor.ApplyStatModifier(modifier.Armor);
+            ArmorPenetration.ApplyStatModifier(modifier.ArmorPenetration);
+            AttackDamage.ApplyStatModifier(modifier.AttackDamage);
+            AttackSpeedMultiplier.ApplyStatModifier(modifier.AttackSpeed);
+            CriticalChance.ApplyStatModifier(modifier.CriticalChance);
+            CriticalDamage.ApplyStatModifier(modifier.CriticalDamage);
+            GoldPerSecond.ApplyStatModifier(modifier.GoldPerSecond);
+            HealthPoints.ApplyStatModifier(modifier.HealthPoints);
+            HealthRegeneration.ApplyStatModifier(modifier.HealthRegeneration);
+            LifeSteal.ApplyStatModifier(modifier.LifeSteal);
+            MagicResist.ApplyStatModifier(modifier.MagicResist);
+            MagicPenetration.ApplyStatModifier(modifier.MagicPenetration);
+            ManaPoints.ApplyStatModifier(modifier.ManaPoints);
+            ManaRegeneration.ApplyStatModifier(modifier.ManaRegeneration);
+            MoveSpeed.ApplyStatModifier(modifier.MoveSpeed);
+            Range.ApplyStatModifier(modifier.Range);
+            Size.ApplyStatModifier(modifier.Size);
+            SpellVamp.ApplyStatModifier(modifier.SpellVamp);
+            Tenacity.ApplyStatModifier(modifier.Tenacity);
         }
 
         public void RemoveModifier(IStatsModifier modifier)
         {
-            AbilityPower.RemoveStatModificator(modifier.AbilityPower);
-            Armor.RemoveStatModificator(modifier.Armor);
-            ArmorPenetration.RemoveStatModificator(modifier.ArmorPenetration);
-            AttackDamage.RemoveStatModificator(modifier.AttackDamage);
-            AttackSpeedMultiplier.RemoveStatModificator(modifier.AttackSpeed);
-            CriticalChance.RemoveStatModificator(modifier.CriticalChance);
-            CriticalDamage.RemoveStatModificator(modifier.CriticalDamage);
-            GoldPerSecond.RemoveStatModificator(modifier.GoldPerSecond);
-            HealthPoints.RemoveStatModificator(modifier.HealthPoints);
-            HealthRegeneration.RemoveStatModificator(modifier.HealthRegeneration);
-            LifeSteal.RemoveStatModificator(modifier.LifeSteal);
-            MagicResist.RemoveStatModificator(modifier.MagicResist);
-            MagicPenetration.RemoveStatModificator(modifier.MagicPenetration);
-            ManaPoints.RemoveStatModificator(modifier.ManaPoints);
-            ManaRegeneration.RemoveStatModificator(modifier.ManaRegeneration);
-            MoveSpeed.RemoveStatModificator(modifier.MoveSpeed);
-            Range.RemoveStatModificator(modifier.Range);
-            Size.RemoveStatModificator(modifier.Size);
-            SpellVamp.RemoveStatModificator(modifier.SpellVamp);
-            Tenacity.RemoveStatModificator(modifier.Tenacity);
+            AbilityPower.RemoveStatModifier(modifier.AbilityPower);
+            Armor.RemoveStatModifier(modifier.Armor);
+            ArmorPenetration.RemoveStatModifier(modifier.ArmorPenetration);
+            AttackDamage.RemoveStatModifier(modifier.AttackDamage);
+            AttackSpeedMultiplier.RemoveStatModifier(modifier.AttackSpeed);
+            CriticalChance.RemoveStatModifier(modifier.CriticalChance);
+            CriticalDamage.RemoveStatModifier(modifier.CriticalDamage);
+            GoldPerSecond.RemoveStatModifier(modifier.GoldPerSecond);
+            HealthPoints.RemoveStatModifier(modifier.HealthPoints);
+            HealthRegeneration.RemoveStatModifier(modifier.HealthRegeneration);
+            LifeSteal.RemoveStatModifier(modifier.LifeSteal);
+            MagicResist.RemoveStatModifier(modifier.MagicResist);
+            MagicPenetration.RemoveStatModifier(modifier.MagicPenetration);
+            ManaPoints.RemoveStatModifier(modifier.ManaPoints);
+            ManaRegeneration.RemoveStatModifier(modifier.ManaRegeneration);
+            MoveSpeed.RemoveStatModifier(modifier.MoveSpeed);
+            Range.RemoveStatModifier(modifier.Range);
+            Size.RemoveStatModifier(modifier.Size);
+            SpellVamp.RemoveStatModifier(modifier.SpellVamp);
+            Tenacity.RemoveStatModifier(modifier.Tenacity);
         }
 
         public float GetTotalAttackSpeed()
@@ -214,15 +214,22 @@ namespace LeagueSandbox.GameServer.GameObjects.Stats
         {
             Level++;
 
-            HealthPoints.BaseValue += HealthPerLevel;
+            StatsModifier statsLevelUp = new StatsModifier();
+            statsLevelUp.HealthPoints.BaseValue = HealthPerLevel;
+            statsLevelUp.ManaPoints.BaseValue = ManaPerLevel;
+            statsLevelUp.AttackDamage.BaseValue = AdPerLevel;
+            statsLevelUp.Armor.BaseValue = ArmorPerLevel;
+            statsLevelUp.MagicResist.BaseValue = MagicResistPerLevel;
+            statsLevelUp.HealthRegeneration.BaseValue = HealthRegenerationPerLevel;
+            statsLevelUp.ManaRegeneration.BaseValue = ManaRegenerationPerLevel;
+            if (Level > 1)
+            {
+                statsLevelUp.AttackSpeed.PercentBaseBonus = GrowthAttackSpeed / 100.0f;
+            }
+            AddModifier(statsLevelUp);
+
             CurrentHealth = HealthPoints.Total / (HealthPoints.Total - HealthPerLevel) * CurrentHealth;
-            ManaPoints.BaseValue = ManaPoints.Total + ManaPerLevel;
             CurrentMana = ManaPoints.Total / (ManaPoints.Total - ManaPerLevel) * CurrentMana;
-            AttackDamage.BaseValue = AttackDamage.BaseValue + AdPerLevel;
-            Armor.BaseValue = Armor.BaseValue + ArmorPerLevel;
-            MagicResist.BaseValue = MagicResist.Total + MagicResistPerLevel;
-            HealthRegeneration.BaseValue = HealthRegeneration.BaseValue + HealthRegenerationPerLevel;
-            ManaRegeneration.BaseValue = ManaRegeneration.BaseValue + ManaRegenerationPerLevel;
         }
 
         public bool GetSpellEnabled(byte id)

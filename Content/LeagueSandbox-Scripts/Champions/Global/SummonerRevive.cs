@@ -1,17 +1,29 @@
 using GameServerCore.Domain.GameObjects;
-using GameServerCore.Domain;
+using GameServerCore.Domain.GameObjects.Spell;
+using GameServerCore.Domain.GameObjects.Spell.Missile;
 using static LeagueSandbox.GameServer.API.ApiFunctionManager;
 using LeagueSandbox.GameServer.Scripting.CSharp;
+using System.Numerics;
+using GameServerCore.Scripting.CSharp;
 
 namespace Spells
 {
-    public class SummonerRevive : IGameScript
+    public class SummonerRevive : ISpellScript
     {
-        public void OnStartCasting(IObjAiBase owner, ISpell spell, IAttackableUnit target)
+        public ISpellScriptMetadata ScriptMetadata { get; private set; } = new SpellScriptMetadata()
+        {
+            // TODO
+        };
+
+        public void OnActivate(IObjAiBase owner, ISpell spell)
         {
         }
 
-        public void OnFinishCasting(IObjAiBase owner, ISpell spell, IAttackableUnit target)
+        public void OnDeactivate(IObjAiBase owner, ISpell spell)
+        {
+        }
+
+        public void OnSpellPreCast(IObjAiBase owner, ISpell spell, IAttackableUnit target, Vector2 start, Vector2 end)
         {
             if (!owner.IsDead)
             {
@@ -20,22 +32,30 @@ namespace Spells
 
             (owner as IChampion).Respawn();
             AddBuff("SummonerReviveSpeedBoost", 12.0f, 1, spell, owner, owner);
-            AddParticleTarget(owner, "Global_SS_Revive.troy", owner);
+            AddParticleTarget(owner, owner, "Global_SS_Revive.troy", owner);
         }
 
-        public void ApplyEffects(IObjAiBase owner, IAttackableUnit target, ISpell spell, IProjectile projectile)
+        public void OnSpellCast(ISpell spell)
         {
         }
 
-        public void OnUpdate(double diff)
+        public void OnSpellPostCast(ISpell spell)
         {
         }
 
-        public void OnActivate(IObjAiBase owner)
+        public void OnSpellChannel(ISpell spell)
         {
         }
 
-        public void OnDeactivate(IObjAiBase owner)
+        public void OnSpellChannelCancel(ISpell spell)
+        {
+        }
+
+        public void OnSpellPostChannel(ISpell spell)
+        {
+        }
+
+        public void OnUpdate(float diff)
         {
         }
     }

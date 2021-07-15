@@ -18,7 +18,7 @@ namespace LeagueSandbox.GameServer.Packets.PacketHandlers
 
         public override bool HandlePacket(int userId, StartGameRequest req)
         {
-            var peerInfo = _playerManager.GetPeerInfo((ulong)userId);
+            var peerInfo = _playerManager.GetPeerInfo(userId);
 
             if (!peerInfo.IsDisconnected)
             {
@@ -40,28 +40,28 @@ namespace LeagueSandbox.GameServer.Packets.PacketHandlers
                     {
                         if (!p.Item2.IsStartedClient) continue; //user still didn't connect, not get informed about it
                         if (player.Item2.PlayerId == p.Item2.PlayerId) continue; //Don't self-inform twice
-                        _game.PacketNotifier.NotifyHeroSpawn((int)player.Item2.PlayerId, p.Item2);
+                        _game.PacketNotifier.NotifyS2C_CreateHero((int)player.Item2.PlayerId, p.Item2);
                         _game.PacketNotifier.NotifyAvatarInfo((int)player.Item2.PlayerId, p.Item2);
                     }
 
-                    if (player.Item2.PlayerId == (ulong)userId && !player.Item2.IsMatchingVersion)
+                    if (player.Item2.PlayerId == userId && !player.Item2.IsMatchingVersion)
                     {
                         var msg = "Your client version does not match the server. " +
                                   "Check the server log for more information.";
                          _game.PacketNotifier.NotifyDebugMessage(userId, msg);
                     }
 
-                    _game.PacketNotifier.NotifyEnterLocalVisibilityClient(player.Item2.Champion);
+                    _game.PacketNotifier.NotifyEnterLocalVisibilityClient(player.Item2.Champion, ignoreVision: true);
                     // TODO: send this in one place only
                     _game.PacketNotifier.NotifyUpdatedStats(player.Item2.Champion, false);
                     _game.PacketNotifier.NotifyBlueTip((int) player.Item2.PlayerId, "Welcome to League Sandbox!",
-                        "This is a WIP product.", "", 0, player.Item2.Champion.NetId,
+                        "This is a WIP project.", "", 0, player.Item2.Champion.NetId,
                         _game.NetworkIdManager.GetNewNetId());
                     _game.PacketNotifier.NotifyBlueTip((int) player.Item2.PlayerId, "Server Build Date",
                         ServerContext.BuildDateString, "", 0, player.Item2.Champion.NetId,
                         _game.NetworkIdManager.GetNewNetId());
-                    _game.PacketNotifier.NotifyBlueTip((int)player.Item2.PlayerId, "Your Champion",
-                        "You play "+ player.Item2.Champion.Model, "", 0, player.Item2.Champion.NetId,
+                    _game.PacketNotifier.NotifyBlueTip((int)player.Item2.PlayerId, "Your Champion:",
+                        player.Item2.Champion.Model, "", 0, player.Item2.Champion.NetId,
                         _game.NetworkIdManager.GetNewNetId());
                 }
 
@@ -76,11 +76,11 @@ namespace LeagueSandbox.GameServer.Packets.PacketHandlers
                     {
                         if (player.Item2.Team == peerInfo.Team)
                         {
-                             _game.PacketNotifier.NotifyHeroSpawn2(userId, player.Item2.Champion);
+                            _game.PacketNotifier.NotifyEnterVisibilityClient(player.Item2.Champion, userId, true, true, true);
 
                             /* This is probably not the best way
                              * of updating a champion's level, but it works */
-                             _game.PacketNotifier.NotifyLevelUp(player.Item2.Champion);
+                            _game.PacketNotifier.NotifyNPC_LevelUp(player.Item2.Champion);
                             if (_game.IsPaused)
                             {
                                  _game.PacketNotifier.NotifyPauseGame((int)_game.PauseTimeLeft, true);
@@ -92,8 +92,8 @@ namespace LeagueSandbox.GameServer.Packets.PacketHandlers
 
                     // Send the initial game time sync packets, then let the map send another
                     var gameTime = _game.GameTime;
-                     _game.PacketNotifier.NotifyGameTimer(userId, gameTime);
-                     _game.PacketNotifier.NotifyGameTimerUpdate(userId, gameTime);
+                     _game.PacketNotifier.NotifySynchSimTimeS2C(userId, gameTime);
+                     _game.PacketNotifier.NotifySyncMissionStartTimeS2C(userId, gameTime);
 
                     return true;
                 }
@@ -104,8 +104,8 @@ namespace LeagueSandbox.GameServer.Packets.PacketHandlers
 
                     // Send the initial game time sync packets, then let the map send another
                     var gameTime = _game.GameTime;
-                     _game.PacketNotifier.NotifyGameTimer((int) p.Item2.PlayerId, gameTime);
-                     _game.PacketNotifier.NotifyGameTimerUpdate((int) p.Item2.PlayerId, gameTime);
+                     _game.PacketNotifier.NotifySynchSimTimeS2C((int) p.Item2.PlayerId, gameTime);
+                     _game.PacketNotifier.NotifySyncMissionStartTimeS2C((int) p.Item2.PlayerId, gameTime);
                 }
             }
 

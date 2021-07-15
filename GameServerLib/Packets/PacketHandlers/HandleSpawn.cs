@@ -1,6 +1,7 @@
 ﻿using GameServerCore;
 using GameServerCore.Domain;
 using GameServerCore.Domain.GameObjects;
+using GameServerCore.Domain.GameObjects.Spell.Missile;
 using GameServerCore.Enums;
 using GameServerCore.Packets.Handlers;
 using GameServerCore.Packets.PacketDefinitions.Requests;
@@ -29,18 +30,16 @@ namespace LeagueSandbox.GameServer.Packets.PacketHandlers
 
         public override bool HandlePacket(int userId, SpawnRequest req)
         {
-             _game.PacketNotifier.NotifySpawnStart(userId);
+             _game.PacketNotifier.NotifyS2C_StartSpawn(userId);
             _logger.Debug("Spawning map");
 
-            var peerInfo = _playerManager.GetPeerInfo((ulong)userId);
+            var peerInfo = _playerManager.GetPeerInfo(userId);
             var bluePill = _itemManager.GetItemType(_game.Map.MapProperties.BluePillId);
             var itemInstance = peerInfo.Champion.Inventory.SetExtraItem(7, bluePill);
 
             // self-inform
-            _game.PacketNotifier.NotifyHeroSpawn(userId, peerInfo);
+            _game.PacketNotifier.NotifyS2C_CreateHero(userId, peerInfo);
             _game.PacketNotifier.NotifyAvatarInfo(userId, peerInfo);
-
-
 
             _game.PacketNotifier.NotifyBuyItem(userId, peerInfo.Champion, itemInstance);
 
@@ -50,31 +49,45 @@ namespace LeagueSandbox.GameServer.Packets.PacketHandlers
             {
                 var runeItem = _itemManager.GetItemType(rune.Value);
                 var newRune = peerInfo.Champion.Inventory.SetExtraItem(runeItemSlot, runeItem);
-                _playerManager.GetPeerInfo((ulong)userId).Champion.Stats.AddModifier(runeItem);
+                _playerManager.GetPeerInfo(userId).Champion.Stats.AddModifier(runeItem);
                 runeItemSlot++;
             }
 
-            // Not sure why both 7 and 14 skill slot, but it does not seem to work without it
-             _game.PacketNotifier.NotifySkillUp(userId, peerInfo.Champion.NetId, 7, 1, peerInfo.Champion.SkillPoints);
-             _game.PacketNotifier.NotifySkillUp(userId, peerInfo.Champion.NetId, 14, 1, peerInfo.Champion.SkillPoints);
+            // Does not seem to work without Recall being skilled and enabled.
+            // TODO: Verify if ^ is still true! Commenting it out does not seem to cause any damage.
+            _game.PacketNotifier.NotifyNPC_UpgradeSpellAns(userId, peerInfo.Champion.NetId, 13, 1, peerInfo.Champion.SkillPoints);
 
-            peerInfo.Champion.Stats.SetSpellEnabled(7, true);
-            peerInfo.Champion.Stats.SetSpellEnabled(14, true);
+            peerInfo.Champion.Stats.SetSpellEnabled(13, true);
             peerInfo.Champion.Stats.SetSummonerSpellEnabled(0, true);
             peerInfo.Champion.Stats.SetSummonerSpellEnabled(1, true);
 
             var objects = _game.ObjectManager.GetObjects();
             foreach (var kv in objects)
             {
-                if (kv.Value is ILaneTurret turret)
+                if (kv.Value is IChampion champion)
+                {
+                    if (champion.IsVisibleByTeam(peerInfo.Champion.Team))
+                    {
+                        _game.PacketNotifier.NotifyEnterVisibilityClient(champion, userId, true, true, true);
+                    }
+                }
+                else if (kv.Value is ILaneTurret turret)
                 {
                      _game.PacketNotifier.NotifyTurretSpawn(userId, turret);
 
-                    // Fog Of War
-                     _game.PacketNotifier.NotifyFogUpdate2(turret, _networkIdManager.GetNewNetId());
+                    // TODO: Implemnent a Region class so we can have a centralized (and cleaner) way of making new regions.
+                    // Turret Vision (values based on packet data, placeholders)
+                    _game.PacketNotifier.NotifyAddRegion
+                    (
+                        _networkIdManager.GetNewNetId(), turret.Team, turret.Position,
+                        25000.0f, 800.0f, -2, 
+                        null, turret, turret.CharData.PathfindingCollisionRadius,
+                        130.0f, 1.0f, 0,
+                        true, true
+                    );
 
                     // To suppress game HP-related errors for enemy turrets out of vision
-                    _game.PacketNotifier.NotifyEnterLocalVisibilityClient(turret, userId);
+                    _game.PacketNotifier.NotifyEnterLocalVisibilityClient(turret, userId, ignoreVision: true);
 
                     foreach (var item in turret.Inventory)
                     {
@@ -90,24 +103,17 @@ namespace LeagueSandbox.GameServer.Packets.PacketHandlers
                 {
                      _game.PacketNotifier.NotifyLevelPropSpawn(userId, levelProp);
                 }
-                else if (kv.Value is IChampion champion)
-                {
-                    if (champion.IsVisibleByTeam(peerInfo.Champion.Team))
-                    {
-                        _game.PacketNotifier.NotifyEnterVisibilityClient(champion, champion.Team, userId);
-                    }
-                }
                 else if (kv.Value is IInhibitor || kv.Value is INexus)
                 {
                     var inhibtor = (IAttackableUnit)kv.Value;
                      _game.PacketNotifier.NotifyStaticObjectSpawn(userId, inhibtor.NetId);
                     _game.PacketNotifier.NotifyEnterLocalVisibilityClient(userId, inhibtor.NetId);
                 }
-                else if (kv.Value is IProjectile projectile)
+                else if (kv.Value is ISpellMissile missile)
                 {
-                    if (projectile.IsVisibleByTeam(peerInfo.Champion.Team))
+                    if (missile.IsVisibleByTeam(peerInfo.Champion.Team))
                     {
-                         _game.PacketNotifier.NotifyMissileReplication(projectile);
+                         _game.PacketNotifier.NotifyMissileReplication(missile);
                     }
                 }
                 else

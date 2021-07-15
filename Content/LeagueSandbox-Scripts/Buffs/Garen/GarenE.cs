@@ -1,10 +1,7 @@
-﻿using GameServerCore.Domain;
-using GameServerCore.Domain.GameObjects;
+﻿using GameServerCore.Domain.GameObjects;
+using GameServerCore.Domain.GameObjects.Spell;
 using GameServerCore.Enums;
-using LeagueSandbox.GameServer.Scripting.CSharp;
-using System;
-using System.Collections.Generic;
-using System.Text;
+using GameServerCore.Scripting.CSharp;
 
 namespace GarenE
 {
@@ -18,19 +15,19 @@ namespace GarenE
 
         public int MaxStacks => 1;
 
-        public IStatsModifier StatsModifier => null;
+        public IStatsModifier StatsModifier { get; private set; }
 
-        public void OnActivate(IObjAiBase unit, IBuff buff, ISpell ownerSpell)
+        public void OnActivate(IAttackableUnit unit, IBuff buff, ISpell ownerSpell)
         {
             // TODO: allow garen move through units
         }
 
-        public void OnDeactivate(IObjAiBase unit)
+        public void OnDeactivate(IAttackableUnit unit, IBuff buff, ISpell ownerSpell)
         {
             // TODO: disallow garen move through units
         }
 
-        public void OnUpdate(double diff)
+        public void OnUpdate(float diff)
         {
             
         }

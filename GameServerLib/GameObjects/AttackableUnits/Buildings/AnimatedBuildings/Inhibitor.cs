@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Numerics;
 using System.Timers;
 using GameServerCore.Domain.GameObjects;
 using GameServerCore.Enums;
@@ -9,6 +10,7 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.Buildings.Animate
     public class Inhibitor : ObjAnimatedBuilding, IInhibitor
     {
         private Timer _respawnTimer;
+        public LaneID Lane { get; private set; }
         public InhibitorState InhibitorState { get; private set; }
         private const double RESPAWN_TIMER = 5 * 60 * 1000;
         private const double RESPAWN_ANNOUNCE = 1 * 60 * 1000;
@@ -20,18 +22,18 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.Buildings.Animate
         public Inhibitor(
             Game game,
             string model,
+            LaneID laneId,
             TeamId team,
             int collisionRadius = 40,
-            float x = 0,
-            float y = 0,
+            Vector2 position = new Vector2(),
             int visionRadius = 0,
             uint netId = 0
-        ) : base(game, model, new Stats.Stats(), collisionRadius, x, y, visionRadius, netId)
+        ) : base(game, model, new Stats.Stats(), collisionRadius, position, visionRadius, netId, team)
         {
             Stats.CurrentHealth = 4000;
             Stats.HealthPoints.BaseValue = 4000;
             InhibitorState = InhibitorState.ALIVE;
-            SetTeam(team);
+            Lane = laneId;
         }
 
         public override void OnAdded()
@@ -48,16 +50,12 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.Buildings.Animate
                 var u = obj as IObjAiBase;
                 if (u != null && u.TargetUnit == this)
                 {
-                    u.SetTargetUnit(null);
-                    u.AutoAttackTarget = null;
-                    u.IsAttacking = false;
-                    _game.PacketNotifier.NotifySetTarget(u, null);
-                    u.HasMadeInitialAttack = false;
+                    u.SetTargetUnit(null, true);
                 }
             }
 
             _respawnTimer?.Stop();
-            _respawnTimer = new Timer(RESPAWN_TIMER) {AutoReset = false};
+            _respawnTimer = new Timer(RESPAWN_TIMER) { AutoReset = false };
 
             _respawnTimer.Elapsed += (a, b) =>
             {
@@ -111,11 +109,6 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.Buildings.Animate
         public override void SetToRemove()
         {
 
-        }
-
-        public override float GetMoveSpeed()
-        {
-            return 0;
         }
 
     }

@@ -1,15 +1,14 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using GameServerCore.Content;
 using GameServerCore.Domain;
 using log4net;
-using log4net.Repository.Hierarchy;
 using LeagueSandbox.GameServer.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using LeagueSandbox.GameServer.Content.Navigation;
+using GameServerCore.Domain.GameObjects.Spell;
+using System.Numerics;
 
 namespace LeagueSandbox.GameServer.Content
 {
@@ -38,7 +37,7 @@ namespace LeagueSandbox.GameServer.Content
         public Package(string packagePath, Game game)
         {
             PackagePath = packagePath;
-            
+
             _game = game;
             _logger = LoggerProvider.GetLogger();
         }
@@ -61,7 +60,7 @@ namespace LeagueSandbox.GameServer.Content
             }
         }
 
-        public IContentFile GetContentFileFromJson(string contentType, string itemName)
+        public IContentFile GetContentFileFromJson(string contentType, string itemName, string subPath = null)
         {
             if (!_content.ContainsKey(contentType) || !_content[contentType].ContainsKey(itemName))
             {
@@ -70,6 +69,12 @@ namespace LeagueSandbox.GameServer.Content
             }
 
             var fileName = $"{itemName}/{itemName}.json";
+
+            if (subPath != null)
+            {
+                fileName = $"{subPath}/{itemName}.json";
+            }
+
             var filePath = $"{GetContentTypePath(contentType)}/{fileName}";
             var fileText = File.ReadAllText(filePath);
 
@@ -85,6 +90,177 @@ namespace LeagueSandbox.GameServer.Content
             }
 
             return toReturnContentFile;
+        }
+
+        /// <summary>
+        /// Reads through the room file of the given map to create MapData which includes all of the map's objects.
+        /// </summary>
+        /// <param name="mapId">Map to read.</param>
+        /// <returns>MapData containing all objects listed in the room file.</returns>
+        public MapData GetMapData(int mapId)
+        {
+            // Define the end of the file path and setup return variable.
+            var mapName = $"Map{mapId}";
+            var contentType = "Maps";
+            var toReturnMapData = new MapData(mapId);
+
+            // Verify that the content exists.
+            if (!_content.ContainsKey(contentType) || !_content[contentType].ContainsKey(mapName))
+            {
+                return null;
+            }
+
+            // MapObjects
+
+            // Define the full path to the room file which houses references to all objects.
+            var sceneDirectory = $"{GetContentTypePath(contentType)}/{mapName}/Scene";
+            var roomFilePath = $"{sceneDirectory}/room.dsc.json";
+
+            // Declare empty room variable.
+            JArray mapObjects;
+
+            // To prevent crashes if the files are missing.
+            try
+            {
+                // Read the room file.
+                var mapData = JObject.Parse(File.ReadAllText(roomFilePath));
+
+                // Grab the array of object reference entries.
+                mapObjects = (JArray)mapData.SelectToken("entries");
+            }
+            // If failed to read.
+            catch (JsonReaderException)
+            {
+                return null;
+            }
+
+            // Get the number of objects in the entries array.
+            var objectCount = mapObjects.Count;
+            // Iterate through them.
+            for (var i = 0; i < objectCount; i++)
+            {
+                // Get the object reference name.
+                string nameReference = mapObjects[i].Value<string>("Name");
+
+                // Define the full path to the object file.
+                var objectFileName = $"{mapName}/Scene/{nameReference}.sco";
+                var objectFilePath = $"{GetContentTypePath(contentType)}/{objectFileName}.json";
+
+                // Create empty mapObject so we can fill it after we successfully read the object file.
+                MapData.MapObject mapObject;
+
+                try
+                {
+                    // Read the object file
+                    var objectData = JObject.Parse(File.ReadAllText(objectFilePath));
+
+                    // Grab the Name and CentralPoint
+                    var name = objectData.Value<string>("Name");
+                    var pointJson = objectData.SelectToken("CentralPoint");
+                    var point = new Vector3
+                    {
+                        X = pointJson.Value<float>("X"),
+                        Y = pointJson.Value<float>("Y"),
+                        Z = pointJson.Value<float>("Z")
+                    };
+
+                    mapObject = new MapData.MapObject(name, point, mapId);
+                }
+                catch (JsonReaderException)
+                {
+                    continue;
+                }
+
+                // Add the reference name and filled map object.
+                toReturnMapData.MapObjects.Add(nameReference, mapObject);
+            }
+
+            // EXPCurve, DeathTimes, and StatsProgression.
+
+            var expFile = new ContentFile();
+            var deathTimefile = new ContentFile();
+            var statProgressionFile = new ContentFile();
+            try
+            {
+                expFile = (ContentFile)GetContentFileFromJson("Maps", "ExpCurve", mapName);
+                deathTimefile = (ContentFile)GetContentFileFromJson("Maps", "DeathTimes", mapName);
+                statProgressionFile = (ContentFile)GetContentFileFromJson("Maps", "StatsProgression", mapName);
+            }
+            catch (ContentNotFoundException exception)
+            {
+                _logger.Warn(exception.Message);
+                return null;
+            }
+
+            if (expFile.Values.ContainsKey("EXP"))
+            {
+                // We skip the first level, meaning there are 29 level instances, but we only assign 2->29 (that's 29).
+                // To fix this (assign 2->30), we add 1 to the Count.
+                for (int i = 2; i <= expFile.Values["EXP"].Count + 1; i++)
+                {
+                    toReturnMapData.ExpCurve.Add(expFile.GetFloat("EXP", $"Level{i}"));
+                }
+            }
+
+            if (deathTimefile.Values.ContainsKey("TimeDeadPerLevel"))
+            {
+                for (int i = 1; i < deathTimefile.Values["TimeDeadPerLevel"].Count; i++)
+                {
+                    if (i <= 9)
+                    {
+                        toReturnMapData.DeathTimes.Add(deathTimefile.GetFloat("TimeDeadPerLevel", $"Level0{i}"));
+                    }
+                    else
+                    {
+                        toReturnMapData.DeathTimes.Add(deathTimefile.GetFloat("TimeDeadPerLevel", $"Level{i}"));
+                    }
+                }
+            }
+
+            if (statProgressionFile.Values.ContainsKey("PerLevelStatsFactor"))
+            {
+                for (int i = 0; i < statProgressionFile.Values["PerLevelStatsFactor"].Count; i++)
+                {
+                    toReturnMapData.StatsProgression.Add(statProgressionFile.GetFloat("PerLevelStatsFactor", $"Level{i}"));
+                }
+            }
+
+            // SpawnBarracks (lane minion spawn positions)
+
+            JObject spawnBarracks = new JObject();
+            foreach (var file in Directory.GetFiles(sceneDirectory))
+            {
+                if (file.Contains("Spawn_Barracks"))
+                {
+                    var barrack = Path.GetFileName(file);
+                    var path = $"{sceneDirectory}/{barrack}";
+                    try
+                    {
+                        spawnBarracks = JObject.Parse(File.ReadAllText(path));
+                    }
+                    catch (ContentNotFoundException exception)
+                    {
+                        _logger.Warn(exception.Message);
+                        return null;
+                    }
+
+                    string name = spawnBarracks.Value<string>("Name");
+
+                    var centralPoint = spawnBarracks.SelectToken("CentralPoint");
+                    var barrackCoords = new Vector3
+                    {
+                        X = centralPoint.Value<float>("X"),
+                        Y = centralPoint.Value<float>("Y"),
+                        Z = centralPoint.Value<float>("Z")
+                    };
+
+                    var barracks = new MapData.MapObject(name, barrackCoords, mapId);
+
+                    toReturnMapData.SpawnBarracks.Add(name, barracks);
+                }
+            }
+
+            return toReturnMapData;
         }
 
         public MapSpawns GetMapSpawns(int mapId)
@@ -160,7 +336,7 @@ namespace LeagueSandbox.GameServer.Content
             {
                 return _charData[characterName];
             }
-            
+
             _charData[characterName] = new CharData(_game.Config.ContentManager);
             _charData[characterName].Load(characterName);
             return _charData[characterName];
@@ -168,7 +344,7 @@ namespace LeagueSandbox.GameServer.Content
 
         public bool LoadScripts()
         {
-            var scriptLoadResult = _game.ScriptEngine.LoadSubdirectoryScripts(PackagePath);
+            var scriptLoadResult = _game.ScriptEngine.LoadSubDirectoryScripts(PackagePath);
             switch (scriptLoadResult)
             {
                 case Scripting.CSharp.CompilationStatus.Compiled:
@@ -239,7 +415,7 @@ namespace LeagueSandbox.GameServer.Content
                     continue;
                 }
 
-                _content[contentType][fileName] = new List<string> {PackageName};
+                _content[contentType][fileName] = new List<string> { PackageName };
             }
         }
 

@@ -13,15 +13,15 @@ namespace GameServerCore.Packets.Interfaces
         CastSpellRequest ReadCastSpellRequest(byte[] data);
         ChatMessageRequest ReadChatMessageRequest(byte[] data);
         ClickRequest ReadClickRequest(byte[] data);
-        CursorPositionOnWorldRequest ReadCursorPositionOnWorldRequest(byte[] data);
+        SpellChargeUpdateReq ReadSpellChargeUpdateReq(byte[] data);
         EmotionPacketRequest ReadEmotionPacketRequest(byte[] data);
-        HeartbeatRequest ReadHeartbeatRequest(byte[] data);
+        SyncSimTimeRequest ReadSyncSimTimeRequest(byte[] data);
         PingLoadInfoRequest ReadPingLoadInfoRequest(byte[] data);
         MovementRequest ReadMovementRequest(byte[] data);
         QuestClickedRequest ReadQuestClickedRequest(byte[] data);
         ViewRequest ReadViewRequest(byte[] data);
         SellItemRequest ReadSellItemRequest(byte[] data);
-        SkillUpRequest ReadSkillUpRequest(byte[] data);
+        UpgradeSpellReq ReadUpgradeSpellReq(byte[] data);
         UseObjectRequest ReadUseObjectRequest(byte[] data);
         SynchVersionRequest ReadSynchVersionRequest(byte[] data);
     }

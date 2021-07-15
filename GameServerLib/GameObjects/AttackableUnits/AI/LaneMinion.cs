@@ -1,5 +1,4 @@
 ﻿using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
 using GameServerCore.Domain.GameObjects;
 using GameServerCore.Enums;
@@ -14,49 +13,37 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
         /// </summary>
         protected List<Vector2> _mainWaypoints;
         protected int _curMainWaypoint;
-        public string BarracksName { get; } // barracks name of the position
+        /// <summary>
+        /// Name of the Barracks that spawned this lane minion.
+        /// </summary>
+        public string BarracksName { get; }
         public MinionSpawnType MinionSpawnType { get; }
 
         public LaneMinion(
             Game game,
             MinionSpawnType spawnType,
-            string position,
+            string barracksName,
             List<Vector2> mainWaypoints,
-            uint netId = 0
-        ) : base(game, null, 0, 0, "", "", 1100, netId)
+            string model,
+            uint netId = 0,
+            TeamId team = TeamId.TEAM_BLUE
+        ) : base(game, null, new Vector2(), model, model, netId, team)
         {
             IsLaneMinion = true;
             MinionSpawnType = spawnType;
-            BarracksName = position;
+            BarracksName = barracksName;
             _mainWaypoints = mainWaypoints;
             _curMainWaypoint = 0;
             _aiPaused = false;
 
             var spawnSpecifics = _game.Map.MapProperties.GetMinionSpawnPosition(BarracksName);
-            SetTeam(spawnSpecifics.Item1);
             SetPosition(spawnSpecifics.Item2.X, spawnSpecifics.Item2.Y);
 
             _game.Map.MapProperties.SetMinionStats(this); // Let the map decide how strong this minion has to be.
 
-            // Set model
-            Model = _game.Map.MapProperties.GetMinionModel(spawnSpecifics.Item1, spawnType);
+            StopMovement();
 
-            // Fix issues induced by having an empty model string
-            CollisionRadius = _game.Config.ContentManager.GetCharData(Model).PathfindingCollisionRadius;
-
-            // If we have lane path instructions from the map
-            if (mainWaypoints.Count > 0)
-            {
-                // Follow these instructions
-                SetWaypoints(new List<Vector2> { mainWaypoints[0], mainWaypoints[1] });
-            }
-            else
-            {
-                // Otherwise path to own position. (Stand still)
-                SetWaypoints(new List<Vector2> { new Vector2(X, Y), new Vector2(X, Y) });
-            }
-
-            MoveOrder = MoveOrder.MOVE_ORDER_ATTACKMOVE;
+            MoveOrder = OrderType.Hold;
             Replication = new ReplicationLaneMinion(this);
         }
 
@@ -64,10 +51,11 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
             Game game,
             MinionSpawnType spawnType,
             string position,
-            uint netId = 0
-        ) : this(game, spawnType, position, new List<Vector2>(), netId)
+            string model,
+            uint netId = 0,
+            TeamId team = TeamId.TEAM_BLUE
+        ) : this(game, spawnType, position, new List<Vector2>(), model, netId, team)
         {
-
         }
 
         public override void OnAdded()
@@ -82,35 +70,97 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
 
         public override bool AIMove()
         {
-            if (base.AIMove())
+            // TODO: Use unique LaneMinion AI instead of normal Minion AI and add here for return values.
+            if (ScanForTargets()) // returns true if we have a target
+            {
+                if (!RecalculateAttackPosition())
+                {
+                    KeepFocusingTarget(); // attack/follow target
+                }
+                return false;
+            }
+
+            // If we have lane path instructions from the map
+            if (_mainWaypoints.Count > 0 && TargetUnit == null)
             {
                 WalkToDestination();
-                return true;
             }
-            return false;
+            return true;
         }
-
-        // TODO: Override ScanForTargets and use unique LaneMinion AI
 
         public void WalkToDestination()
         {
-            if (_mainWaypoints.Count > _curMainWaypoint + 1)
+            // TODO: Use the methods used in this function for any other minion pathfinding (attacking, targeting, etc).
+
+            var mainWaypointCell = _game.Map.NavigationGrid.GetCellIndex(_mainWaypoints[_curMainWaypoint].X, _mainWaypoints[_curMainWaypoint].Y);
+            var lastWaypointCell = 0;
+
+            if (Waypoints.Count > 0)
             {
-                if (Waypoints.Count == 1 || WaypointIndex >= Waypoints.Count && ++_curMainWaypoint < _mainWaypoints.Count)
+                lastWaypointCell = _game.Map.NavigationGrid.GetCellIndex(Waypoints[Waypoints.Count - 1].X, Waypoints[Waypoints.Count - 1].Y);
+            }
+
+            // First, we make sure we are pathfinding to our current main waypoint.
+            if (lastWaypointCell != mainWaypointCell)
+            {
+                // Pathfind to the next waypoint.
+                var path = new List<Vector2>() { Position, _mainWaypoints[_curMainWaypoint] };
+                var tempPath = _game.Map.NavigationGrid.GetPath(Position, _mainWaypoints[_curMainWaypoint]);
+                if (tempPath != null)
                 {
-                    //CORE_INFO("Minion reached a point! Going to %f; %f", mainWaypoints[curMainWaypoint].X, mainWaypoints[curMainWaypoint].Y);
-                    SetWaypoints(new List<Vector2>() { GetPosition(), _mainWaypoints[_curMainWaypoint] });
-
-                    //TODO: Here we need a certain way to tell if the Minion is in the path/lane, else use pathfinding to return to the lane.
-                    //I think in league when minion start chasing they save Current Position and
-                    //when it stop chasing the minion return to the last saved position, and then continue main waypoints from there.
-
-                    /*var path = _game.Map.NavGrid.GetPath(GetPosition(), _mainWaypoints[_curMainWaypoint + 1]);
-                    if(path.Count > 1)
-                    {
-                        SetWaypoints(path);
-                    }*/
+                    path = tempPath;
                 }
+
+                SetWaypoints(path);
+                UpdateMoveOrder(OrderType.MoveTo);
+
+                //TODO: Here we need a certain way to tell if the Minion is in the path/lane, else use pathfinding to return to the lane.
+                //I think in league when minion start chasing they save Current Position and
+                //when it stop chasing the minion return to the last saved position, and then continue main waypoints from there.
+
+                /*var path = _game.Map.NavGrid.GetPath(GetPosition(), _mainWaypoints[_curMainWaypoint + 1]);
+                if(path.Count > 1)
+                {
+                    SetWaypoints(path);
+                }*/
+            }
+
+            var waypointSuccessRange = CollisionRadius;
+            var nearestObjects = _game.Map.CollisionHandler.QuadDynamic.GetNearestObjects(this);
+
+            // This is equivalent to making any colliding minions equal to a single minion to save on pathfinding resources.
+            foreach (IGameObject obj in nearestObjects)
+            {
+                if (obj is ILaneMinion minion)
+                {
+                    // If the closest minion is in collision range, add its collision radius to the waypoint success range.
+                    if (GameServerCore.Extensions.IsVectorWithinRange(minion.Position, Position, waypointSuccessRange))
+                    {
+                        waypointSuccessRange += minion.CollisionRadius;
+                    }
+                    // If the closest minion (above) is not in collision range, then we stop the loop.
+                    else
+                    {
+                        continue;
+                    }
+                }
+            }
+
+            // Since we are pathfinding to our current main waypoint, we check if 
+            if (GameServerCore.Extensions.IsVectorWithinRange(Position, _mainWaypoints[_curMainWaypoint], waypointSuccessRange) && _mainWaypoints.Count > _curMainWaypoint + 1)
+            {
+                ++_curMainWaypoint;
+
+                // Pathfind to the next waypoint.
+                var path = new List<Vector2>() { Position, _mainWaypoints[_curMainWaypoint] };
+                var tempPath = _game.Map.NavigationGrid.GetPath(Position, _mainWaypoints[_curMainWaypoint]);
+                if (tempPath != null)
+                {
+                    path = tempPath;
+                }
+
+                SetWaypoints(path);
+                UpdateMoveOrder(OrderType.AttackMove);
             }
         }
 

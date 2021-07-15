@@ -1,9 +1,8 @@
 ﻿using GameServerCore.Enums;
-using GameServerCore.Domain;
 using GameServerCore.Domain.GameObjects;
-using static LeagueSandbox.GameServer.API.ApiFunctionManager;
+using GameServerCore.Domain.GameObjects.Spell;
 using LeagueSandbox.GameServer.GameObjects.Stats;
-using LeagueSandbox.GameServer.Scripting.CSharp;
+using GameServerCore.Scripting.CSharp;
 
 namespace Radiance_ally
 {
@@ -16,19 +15,18 @@ namespace Radiance_ally
 
         public IStatsModifier StatsModifier { get; private set; } = new StatsModifier();
 
-        public void OnActivate(IObjAiBase unit, IBuff buff, ISpell ownerSpell)
+        public void OnActivate(IAttackableUnit unit, IBuff buff, ISpell ownerSpell)
         {
-            StatsModifier.AttackDamage.FlatBonus += (10f + ownerSpell.Level * 20) / 2;
-            StatsModifier.AbilityPower.FlatBonus += (10f + ownerSpell.Level * 20) / 2;
+            StatsModifier.AttackDamage.FlatBonus += (10f + ownerSpell.CastInfo.SpellLevel * 20) / 2;
+            StatsModifier.AbilityPower.FlatBonus += (10f + ownerSpell.CastInfo.SpellLevel * 20) / 2;
             unit.AddStatModifier(StatsModifier);
         }
 
-        public void OnDeactivate(IObjAiBase unit)
+        public void OnDeactivate(IAttackableUnit unit, IBuff buff, ISpell ownerSpell)
         {
-            unit.RemoveStatModifier(StatsModifier);
         }
 
-        public void OnUpdate(double diff)
+        public void OnUpdate(float diff)
         {
 
         }

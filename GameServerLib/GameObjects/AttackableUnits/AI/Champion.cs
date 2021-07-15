@@ -1,18 +1,13 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
+﻿using System.Collections.Generic;
 using System.Numerics;
 using GameServerCore;
 using GameServerCore.Domain;
 using GameServerCore.Domain.GameObjects;
+using GameServerCore.Domain.GameObjects.Spell;
 using GameServerCore.NetInfo;
 using GameServerCore.Enums;
-using LeagueSandbox.GameServer.API;
-using LeagueSandbox.GameServer.Content;
-using LeagueSandbox.GameServer.GameObjects.Spells;
 using LeagueSandbox.GameServer.GameObjects.Stats;
 using LeagueSandbox.GameServer.Items;
-using LeagueSandbox.GameServer.Content.Navigation;
 
 namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
 {
@@ -22,7 +17,6 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
         public float RespawnTimer { get; private set; }
         public float ChampionGoldFromMinions { get; set; }
         public IRuneCollection RuneList { get; }
-        public Dictionary<short, ISpell> Spells { get; }
         public IChampionStats ChampStats { get; private set; } = new ChampionStats();
 
         public byte SkillPoints { get; set; }
@@ -46,14 +40,13 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
                         uint playerTeamSpecialId,
                         IRuneCollection runeList,
                         ClientInfo clientInfo,
-                        uint netId = 0)
-            : base(game, model, new Stats.Stats(), 30, 0, 0, 1200, netId)
+                        uint netId = 0,
+                        TeamId team = TeamId.TEAM_BLUE)
+            : base(game, model, new Stats.Stats(), 30, new Vector2(), 1200, netId, team)
         {
             _playerId = playerId;
             _playerTeamSpecialId = playerTeamSpecialId;
             RuneList = runeList;
-
-            Spells = new Dictionary<short, ISpell>();
 
             Inventory = InventoryManager.CreateInventory();
             Shop = Items.Shop.CreateShop(this, game);
@@ -64,46 +57,15 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
 
             //TODO: automaticaly rise spell levels with CharData.SpellLevelsUp
 
-            for (short i = 0; i < CharData.SpellNames.Length; i++)
-            {
-                if (!string.IsNullOrEmpty(CharData.SpellNames[i]))
-                {
-                    Spells[i] = new Spell(game, this, CharData.SpellNames[i], (byte)i);
-                }
-            }
+            Spells[(int)SpellSlotType.SummonerSpellSlots] = new Spell.Spell(game, this, clientInfo.SummonerSkills[0], (int)SpellSlotType.SummonerSpellSlots);
+            Spells[(int)SpellSlotType.SummonerSpellSlots].LevelUp();
+            Spells[(int)SpellSlotType.SummonerSpellSlots + 1] = new Spell.Spell(game, this, clientInfo.SummonerSkills[1], (int)SpellSlotType.SummonerSpellSlots + 1);
+            Spells[(int)SpellSlotType.SummonerSpellSlots + 1].LevelUp();
 
-            Spells[4] = new Spell(game, this, clientInfo.SummonerSkills[0], 4);
-            Spells[5] = new Spell(game, this, clientInfo.SummonerSkills[1], 5);
+            Spells[(int)SpellSlotType.BluePillSlot] = new Spell.Spell(game, this, "Recall", (int)SpellSlotType.BluePillSlot);
+            Stats.SetSpellEnabled((byte)SpellSlotType.BluePillSlot, true);
 
-            for (byte i = 6; i < 13; i++)
-            {
-                Spells[i] = new Spell(game, this, "BaseSpell", i);
-            }
-
-            Spells[13] = new Spell(game, this, "Recall", 13);
-
-            for (short i = 0; i < CharData.Passives.Length; i++)
-            {
-                if (!string.IsNullOrEmpty(CharData.Passives[i].PassiveAbilityName))
-                {
-                    Spells[(byte)(i + 14)] = new Spell(game, this, CharData.Passives[i].PassiveAbilityName, (byte)(i + 14));
-                }
-            }
-
-            for (short i = 0; i < CharData.ExtraSpells.Length; i++)
-            {
-                if (!string.IsNullOrEmpty(CharData.ExtraSpells[i]))
-                {
-                    var spell = new Spell(game, this, CharData.ExtraSpells[i], (byte)(i + 45));
-                    Spells[(byte)(i + 45)] = spell;
-                    spell.LevelUp();
-                }
-            }
-
-            Spells[4].LevelUp();
-            Spells[5].LevelUp();
             Replication = new ReplicationHero(this);
-            Stats.SetSpellEnabled(13, true);
         }
 
         private string GetPlayerIndex()
@@ -115,7 +77,7 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
         {
             base.OnAdded();
             _game.ObjectManager.AddChampion(this);
-            _game.PacketNotifier.NotifyChampionSpawned(this, Team);
+            _game.PacketNotifier.NotifySpawn(this);
         }
 
         public override void OnRemoved()
@@ -156,38 +118,12 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
             return 0;
         }
 
-        public bool CanMove()
-        {
-            return !HasCrowdControl(CrowdControlType.STUN) &&
-                !IsDashing &&
-                (GetBuffs().Count(x => x.OriginSpell.SpellData.CanMoveWhileChanneling) == GetBuffsCount() || !IsCastingSpell) &&
-                !IsDead &&
-                !HasCrowdControl(CrowdControlType.ROOT);
-        }
-
-        public void UpdateMoveOrder(MoveOrder order)
-        {
-            MoveOrder = order;
-
-            ApiEventManager.OnChampionMove.Publish(this);
-        }
-
-        public bool CanCast()
-        {
-            return !HasCrowdControl(CrowdControlType.STUN) && !HasCrowdControl(CrowdControlType.SILENCE);
-        }
-
         public Vector2 GetSpawnPosition()
         {
             var config = _game.Config;
             var playerIndex = GetPlayerIndex();
             var playerTeam = "";
             var teamSize = GetTeamSize();
-
-            if (teamSize > 6) //???
-            {
-                teamSize = 6;
-            }
 
             if (config.Players.ContainsKey(playerIndex))
             {
@@ -201,6 +137,12 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
                 {TeamId.TEAM_PURPLE, config.MapSpawns.Purple}
             };
 
+            if (teamSize > config.MapSpawns.Blue.Count || teamSize > config.MapSpawns.Purple.Count)
+            {
+                var spawns1 = spawnsByTeam[Team];
+                return spawns1[0].GetCoordsForPlayer(0);
+            }
+
             var spawns = spawnsByTeam[Team];
             return spawns[teamSize - 1].GetCoordsForPlayer((int)_playerTeamSpecialId);
         }
@@ -208,116 +150,31 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
         public Vector2 GetRespawnPosition()
         {
             var config = _game.Config;
-            var playerIndex = GetPlayerIndex();
 
-            if (config.Players.ContainsKey(playerIndex))
+            var spawnsByTeam = new Dictionary<TeamId, Dictionary<int, PlayerSpawns>>
             {
-                var p = config.Players[playerIndex];
-            }
-
-            var coords = new Vector2
-            {
-                X = _game.Map.MapProperties.GetRespawnLocation(Team).X,
-                Y = _game.Map.MapProperties.GetRespawnLocation(Team).Y
+                {TeamId.TEAM_BLUE, config.MapSpawns.Blue},
+                {TeamId.TEAM_PURPLE, config.MapSpawns.Purple}
             };
-
-            return new Vector2(coords.X, coords.Y);
+            var spawns1 = spawnsByTeam[Team];
+            return spawns1[0].GetCoordsForPlayer(0);
         }
 
-        public void StopChampionMovement()
-        {
-            List<Vector2> l = new List<Vector2>();
-            l.Add(new Vector2(this.X, this.Y));
-            this.SetWaypoints(l);
-            _game.PacketNotifier.NotifyMovement(this);
-        }
-        
-        public void TeleportTo(float x, float y)
-        {
-            // @TODO: Maybe add a OnChampionTeleport event?
-            ApiEventManager.OnChampionMove.Publish(this);
-            base.TeleportTo(x, y);
-        }
-
-        public ISpell GetSpellBySlot(byte slot)
-        {
-            return Spells[slot];
-        }
-
-        public ISpell GetSpellByName(string name)
-        {
-            foreach (var s in Spells.Values)
-            {
-                if (s == null)
-                {
-                    continue;
-                }
-
-                if (s.SpellName == name)
-                {
-                    return s;
-                }
-            }
-
-            return null;
-        }
-
-        public ISpell LevelUpSpell(byte slot)
+        public override ISpell LevelUpSpell(byte slot)
         {
             if (SkillPoints == 0)
             {
                 return null;
             }
 
-            var s = Spells[slot];
-
-            if (s == null || !CanSpellBeLeveledUp(s))
-            {
-                return null;
-            }
-
-            s.LevelUp();
             SkillPoints--;
 
-            return s;
-        }
-
-        public bool CanSpellBeLeveledUp(ISpell s)
-        {
-            return CharData.SpellsUpLevels[s.Slot][s.Level] <= Stats.Level;
+            return base.LevelUpSpell(slot);
         }
 
         public override void Update(float diff)
         {
             base.Update(diff);
-
-            if (!IsDead && MoveOrder == MoveOrder.MOVE_ORDER_ATTACKMOVE && TargetUnit != null)
-            {
-                var objects = _game.ObjectManager.GetObjects();
-                var distanceToTarget = 25000f;
-                IAttackableUnit nextTarget = null;
-                var range = Math.Max(Stats.Range.Total, DETECT_RANGE);
-
-                foreach (var it in objects)
-                {
-                    if (!(it.Value is IAttackableUnit u) ||
-                        u.IsDead ||
-                        u.Team == Team ||
-                        GetDistanceTo(u) > range)
-                        continue;
-
-                    if (!(GetDistanceTo(u) < distanceToTarget))
-                        continue;
-                    distanceToTarget = GetDistanceTo(u);
-                    nextTarget = u;
-                }
-
-                if (nextTarget != null)
-                {
-                    TargetUnit = nextTarget;
-                    _game.PacketNotifier.NotifySetTarget(this, nextTarget);
-                }
-            }
 
             if (!Stats.IsGeneratingGold && _game.GameTime >= _game.Map.MapProperties.FirstGoldTime)
             {
@@ -334,17 +191,11 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
                 }
             }
 
-            var isLevelup = LevelUp();
-            if (isLevelup)
+            if (LevelUp())
             {
-                _game.PacketNotifier.NotifyLevelUp(this);
+                _game.PacketNotifier.NotifyNPC_LevelUp(this);
                 // TODO: send this in one place only
                 _game.PacketNotifier.NotifyUpdatedStats(this, false);
-            }
-
-            foreach (var s in Spells.Values)
-            {
-                s.Update(diff);
             }
 
             if (_championHitFlagTimer > 0)
@@ -371,8 +222,9 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
 
         public bool OnDisconnect()
         {
-            this.StopChampionMovement();
-            this.SetWaypoints(_game.Map.NavigationGrid.GetPath(GetPosition(), _game.Map.MapProperties.GetRespawnLocation(Team).GetPosition()));
+            this.StopMovement();
+            this.SetWaypoints(_game.Map.NavigationGrid.GetPath(Position, GetRespawnPosition()));
+            this.UpdateMoveOrder(OrderType.MoveTo, true);
 
             return true;
         }
@@ -386,25 +238,21 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
         public bool LevelUp()
         {
             var stats = Stats;
-            var expMap = _game.Map.MapProperties.ExpToLevelUp;
-            if (stats.Level >= expMap.Count)
-            {
-                return false;
-            }
+            var expMap = _game.Config.MapData.ExpCurve;
 
-            if (stats.Experience < expMap[stats.Level])
-            {
-                return false;
-            }
-
-            while (stats.Level < expMap.Count && stats.Experience >= expMap[stats.Level])
+            //Ideally we'd use "stats.Level < expMap.Count + 1", but since we still don't have gamemodes implemented yet, i'll be hardcoding the EXP level to cap at lvl 18,
+            //Since the SR Map has 30 levels in total because of URF
+            if (stats.Level < 18 && (stats.Level < 1 || stats.Experience >= expMap[stats.Level - 1])) //The + and - 1s are there because the XP files don't have level 1
             {
                 Stats.LevelUp();
                 Logger.Debug("Champion " + Model + " leveled up to " + stats.Level);
-                SkillPoints++;
+                if (stats.Level <= 18)
+                {
+                    SkillPoints++;
+                }
+                return true;
             }
-
-            return true;
+            return false;
         }
 
         public void OnKill(IAttackableUnit killed)
@@ -442,8 +290,7 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
 
         public override void Die(IAttackableUnit killer)
         {
-            RespawnTimer = 5000 + Stats.Level * 2500;
-            _game.ObjectManager.StopTargeting(this);
+            RespawnTimer = _game.Config.MapData.DeathTimes[Stats.Level] * 1000.0f;
             ChampStats.Deaths += 1;
 
             _game.PacketNotifier.NotifyUnitAnnounceEvent(UnitAnnounces.DEATH, this, killer);
@@ -509,15 +356,6 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
             _game.ObjectManager.StopTargeting(this);
         }
 
-        public override void OnCollision(IGameObject collider)
-        {
-            base.OnCollision(collider);
-            if (collider == null)
-            {
-                //CORE_INFO("I bumped into a wall!");
-            }
-        }
-
         public override void TakeDamage(IAttackableUnit attacker, float damage, DamageType type, DamageSource source, bool isCrit)
         {
             base.TakeDamage(attacker, damage, type, source, isCrit);
@@ -530,48 +368,6 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
         public void UpdateSkin(int skinNo)
         {
             Skin = skinNo;
-        }
-
-        public ISpell SetSpell(string name, byte slot, bool enabled)
-        {
-            ISpell newSpell = new Spell(_game, this, name, slot);
-
-            if (Spells[slot] != null)
-            {
-                newSpell.SetLevel(Spells[slot].Level);
-            }
-
-            Spells[slot] = newSpell;
-            Stats.SetSpellEnabled(slot, enabled);
-
-            return newSpell;
-        }
-
-        public void SwapSpells(byte slot1, byte slot2)
-        {
-            var enabledBuffer = Stats.GetSpellEnabled(slot1);
-            var buffer = Spells[slot1];
-            Spells[slot1] = Spells[slot2];
-            Spells[slot2] = buffer;
-            Stats.SetSpellEnabled(slot1, Stats.GetSpellEnabled(slot2));
-            Stats.SetSpellEnabled(slot2, enabledBuffer);
-        }
-
-        public void RemoveSpell(byte slot)
-        {
-            Spells[slot].Deactivate();
-            Spells[slot] = new Spell(_game, this, "BaseSpell", slot); // Replace previous spell with empty spell.
-            Stats.SetSpellEnabled(slot, false);
-        }
-
-        ISpell IChampion.GetSpell(byte slot)
-        {
-            return Spells[slot];
-        }
-
-        ISpell IChampion.LevelUpSpell(byte slot)
-        {
-            return LevelUpSpell(slot);
         }
     }
 }

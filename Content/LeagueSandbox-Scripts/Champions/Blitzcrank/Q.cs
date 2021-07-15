@@ -1,57 +1,131 @@
 using System.Numerics;
 using GameServerCore.Enums;
 using GameServerCore.Domain.GameObjects;
+using GameServerCore.Domain.GameObjects.Spell;
+using GameServerCore.Domain.GameObjects.Spell.Missile;
 using static LeagueSandbox.GameServer.API.ApiFunctionManager;
-using LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI;
-using GameServerCore.Domain;
 using LeagueSandbox.GameServer.Scripting.CSharp;
+using LeagueSandbox.GameServer.API;
+using GameServerCore.Scripting.CSharp;
 
 namespace Spells
 {
-    public class RocketGrab : IGameScript
+    public class RocketGrab : ISpellScript
     {
-        public void OnActivate(IObjAiBase owner)
+        public ISpellScriptMetadata ScriptMetadata => new SpellScriptMetadata()
+        {
+            TriggersSpellCasts = true
+            // TODO
+        };
+
+        public void OnActivate(IObjAiBase owner, ISpell spell)
         {
         }
 
-        public void OnDeactivate(IObjAiBase owner)
+        public void OnDeactivate(IObjAiBase owner, ISpell spell)
         {
         }
 
-        public void OnStartCasting(IObjAiBase owner, ISpell spell, IAttackableUnit target)
+        public void OnSpellPreCast(IObjAiBase owner, ISpell spell, IAttackableUnit target, Vector2 start, Vector2 end)
         {
-            spell.SpellAnimation("SPELL1", owner);
+            FaceDirection(end, owner);
         }
 
-        public void OnFinishCasting(IObjAiBase owner, ISpell spell, IAttackableUnit target)
+        public void OnSpellCast(ISpell spell)
         {
-            var current = new Vector2(owner.X, owner.Y);
-            var to = Vector2.Normalize(new Vector2(spell.X, spell.Y) - current);
-            var range = to * 925;
-            var trueCoords = current + range;
-            spell.AddProjectile("RocketGrabMissile", owner.X, owner.Y, trueCoords.X, trueCoords.Y);
         }
 
-        public void ApplyEffects(IObjAiBase owner, IAttackableUnit target, ISpell spell, IProjectile projectile)
+        public void OnSpellPostCast(ISpell spell)
         {
-            var ap = owner.Stats.AbilityPower.Total;
-            var damage = 25 + spell.Level * 55 + ap;
-            target.TakeDamage(owner, damage, DamageType.DAMAGE_TYPE_MAGICAL, DamageSource.DAMAGE_SOURCE_SPELL, false);
-            if (!target.IsDead)
+            var endPos = GetPointFromUnit(spell.CastInfo.Owner, 925);
+            SpellCast(spell.CastInfo.Owner, 0, SpellSlotType.ExtraSlots, endPos, endPos, false, Vector2.Zero);
+        }
+
+        public void OnSpellChannel(ISpell spell)
+        {
+        }
+
+        public void OnSpellChannelCancel(ISpell spell)
+        {
+        }
+
+        public void OnSpellPostChannel(ISpell spell)
+        {
+        }
+
+        public void OnUpdate(float diff)
+        {
+        }
+    }
+
+    public class RocketGrabMissile : ISpellScript
+    {
+        public ISpellScriptMetadata ScriptMetadata => new SpellScriptMetadata()
+        {
+            TriggersSpellCasts = true,
+            MissileParameters = new MissileParameters
             {
-                AddParticleTarget(owner, "Blitzcrank_Grapplin_tar.troy", target, 1, "L_HAND");
-                var current = new Vector2(owner.X, owner.Y);
-                var to = Vector2.Normalize(new Vector2(spell.X, spell.Y) - current);
-                var range = to * 50;
-                var trueCoords = current + range;
-                DashToLocation((ObjAiBase)target, trueCoords.X, trueCoords.Y,
-                    spell.SpellData.MissileSpeed, true);
+                Type = MissileType.Circle
             }
+            // TODO
+        };
 
-            projectile.SetToRemove();
+        public void OnActivate(IObjAiBase owner, ISpell spell)
+        {
+            ApiEventManager.OnSpellMissileHit.AddListener(this, new System.Collections.Generic.KeyValuePair<ISpell, IObjAiBase>(spell, spell.CastInfo.Owner), TargetExecute, false);
         }
 
-        public void OnUpdate(double diff)
+        public void OnDeactivate(IObjAiBase owner, ISpell spell)
+        {
+        }
+
+        public void OnSpellPreCast(IObjAiBase owner, ISpell spell, IAttackableUnit target, Vector2 start, Vector2 end)
+        {
+        }
+
+        public void OnSpellCast(ISpell spell)
+        {
+            // Prevent flash during cast.
+            SealSpellSlot(spell.CastInfo.Owner, SpellSlotType.SummonerSpellSlots, 0, SpellbookType.SPELLBOOK_SUMMONER, true);
+            SealSpellSlot(spell.CastInfo.Owner, SpellSlotType.SummonerSpellSlots, 1, SpellbookType.SPELLBOOK_SUMMONER, true);
+        }
+
+        public void OnSpellPostCast(ISpell spell)
+        {
+            SealSpellSlot(spell.CastInfo.Owner, SpellSlotType.SummonerSpellSlots, 0, SpellbookType.SPELLBOOK_SUMMONER, false);
+            SealSpellSlot(spell.CastInfo.Owner, SpellSlotType.SummonerSpellSlots, 1, SpellbookType.SPELLBOOK_SUMMONER, false);
+        }
+
+        public void TargetExecute(ISpell spell, IAttackableUnit target, ISpellMissile missile)
+        {
+            var owner = spell.CastInfo.Owner;
+            var ap = owner.Stats.AbilityPower.Total;
+            var damage = 80 + ((spell.CastInfo.SpellLevel - 1) * 55) + ap;
+            target.TakeDamage(owner, damage, DamageType.DAMAGE_TYPE_MAGICAL, DamageSource.DAMAGE_SOURCE_SPELL, false);
+
+            missile.SetToRemove();
+
+            var dist = System.Math.Abs(Vector2.Distance(target.Position, owner.Position));
+            var time = dist / 1350f;
+            // Grab particle
+            AddBuff("RocketGrab", time, 1, spell, target, owner);
+            // SetStatus & auto attack
+            AddBuff("RocketGrab2", 0.6f, 1, spell, target, owner);
+        }
+
+        public void OnSpellChannel(ISpell spell)
+        {
+        }
+
+        public void OnSpellChannelCancel(ISpell spell)
+        {
+        }
+
+        public void OnSpellPostChannel(ISpell spell)
+        {
+        }
+
+        public void OnUpdate(float diff)
         {
         }
     }

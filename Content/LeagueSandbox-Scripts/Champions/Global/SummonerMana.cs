@@ -1,22 +1,33 @@
 using GameServerCore.Domain.GameObjects;
-using LeagueSandbox.GameServer.API;
+using GameServerCore.Domain.GameObjects.Spell;
+using GameServerCore.Domain.GameObjects.Spell.Missile;
 using static LeagueSandbox.GameServer.API.ApiFunctionManager;
-using GameServerCore.Domain;
 using LeagueSandbox.GameServer.Scripting.CSharp;
+using System.Numerics;
+using GameServerCore.Scripting.CSharp;
 
 namespace Spells
 {
-    public class SummonerMana : IGameScript
+    public class SummonerMana : ISpellScript
     {
+        public ISpellScriptMetadata ScriptMetadata { get; private set; } = new SpellScriptMetadata()
+        {
+            // TODO
+        };
+
         private const float PERCENT_MAX_MANA_HEAL = 0.40f;
 
-        public void OnStartCasting(IObjAiBase owner, ISpell spell, IAttackableUnit target)
+        public void OnActivate(IObjAiBase owner, ISpell spell)
         {
         }
 
-        public void OnFinishCasting(IObjAiBase owner, ISpell spell, IAttackableUnit target)
+        public void OnDeactivate(IObjAiBase owner, ISpell spell)
         {
-            foreach (var unit in GetChampionsInRange(owner, 600, true))
+        }
+
+        public void OnSpellPreCast(IObjAiBase owner, ISpell spell, IAttackableUnit target, Vector2 start, Vector2 end)
+        {
+            foreach (var unit in GetChampionsInRange(owner.Position, 600, true))
             {
                 if (unit.Team == owner.Team)
                 {
@@ -27,29 +38,36 @@ namespace Spells
 
         private void RestoreMana(IObjAiBase target)
         {
-
             var maxMp = target.Stats.ManaPoints.Total;
             var newMp = target.Stats.CurrentMana + (maxMp * PERCENT_MAX_MANA_HEAL);
             if (newMp < maxMp)
                 target.Stats.CurrentMana = newMp;
             else
                 target.Stats.CurrentMana = maxMp;
-            AddParticleTarget(target, "global_ss_clarity_02.troy", target);
+            AddParticleTarget(target, target, "global_ss_clarity_02.troy", target);
         }
 
-        public void ApplyEffects(IObjAiBase owner, IAttackableUnit target, ISpell spell, IProjectile projectile)
+        public void OnSpellCast(ISpell spell)
         {
         }
 
-        public void OnUpdate(double diff)
+        public void OnSpellPostCast(ISpell spell)
         {
         }
 
-        public void OnActivate(IObjAiBase owner)
+        public void OnSpellChannel(ISpell spell)
         {
         }
 
-        public void OnDeactivate(IObjAiBase owner)
+        public void OnSpellChannelCancel(ISpell spell)
+        {
+        }
+
+        public void OnSpellPostChannel(ISpell spell)
+        {
+        }
+
+        public void OnUpdate(float diff)
         {
         }
     }

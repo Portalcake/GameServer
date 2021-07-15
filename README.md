@@ -24,19 +24,20 @@ Take a look at [this](https://github.com/LeagueSandbox/GameServer/blob/indev/CON
 		
 ### Manual Setup (Windows/Mac)
 * Download the 4.20 version of League game client:
-	1. Unscrubbed, packed version: (https://mega.nz/#!hpkiQK5A!pFkZJtxCMQktJf4umplAdPC_Fukt0xgMfO7g3bGp1Io)
-	2. Scrubbed, moddable version: (https://drive.google.com/open?id=1vr6kGpDK1Hq3Loh8-2z7dlmXSCGKqY2Z)
+	1. [Unscrubbed, packed version](https://mega.nz/#!hpkiQK5A!pFkZJtxCMQktJf4umplAdPC_Fukt0xgMfO7g3bGp1Io)
+	2. [Scrubbed, moddable version](https://drive.google.com/file/d/1JVUGe75nMluczrY14xb0KDXiihFRlGnV)
 * For running the git commands below, [Git Bash](https://gitforwindows.org/) is recommended
 * Clone the git repository using ```git clone https://github.com/LeagueSandbox/GameServer.git```, then to download the necessary contents packages, run:
 	* ```cd GameServer```
 	* ```git submodule init```
 	* ```git submodule update```
-* Open the GameServer Solution in VS and Build and run
+* Open the GameServer Solution in VS, set the platform to x86, Build, and run.
+
 
 ### Manual Setup (Linux)
 * Download the 4.20 version of League game client:
-	1. Unscrubbed, packed version: (https://mega.nz/#!hpkiQK5A!pFkZJtxCMQktJf4umplAdPC_Fukt0xgMfO7g3bGp1Io)
-	2. Scrubbed, moddable version: (https://drive.google.com/open?id=1vr6kGpDK1Hq3Loh8-2z7dlmXSCGKqY2Z)
+	1. [Unscrubbed, packed version](https://mega.nz/#!hpkiQK5A!pFkZJtxCMQktJf4umplAdPC_Fukt0xgMfO7g3bGp1Io)
+	2. [Scrubbed, moddable version](https://drive.google.com/file/d/12sWXWPQdTDIpNTJMOygC61zS7DnoFLfy)
 * Install git and dotnet (dotnet-host, dotnet-runtime, dotnet-sdk, dotnet-targeting-pack) using your distro's package manager
 * Clone the git repository using ```git clone https://github.com/LeagueSandbox/GameServer.git```, then to download the necessary contents packages, run:
 	* ```cd GameServer```
@@ -44,6 +45,7 @@ Take a look at [this](https://github.com/LeagueSandbox/GameServer/blob/indev/CON
 	* ```git submodule update```
 * Build the server by running ```dotnet build .```
 * Enter the output directory by running ```cd GameServerConsole/bin/Debug/netcoreapp3.0/```
+* Open ```Settings/GameInfo.json``` and change ```"CONTENT_PATH": "../../../../../Content"``` to ```"CONTENT_PATH": "../../../../Content"```
 * Open ```Settings/GameServerSettings.json``` and change ```"autoStartClient": true``` to ```false```
 * Start the server: ```./GameServerConsole```
 
@@ -55,7 +57,8 @@ Click the debug button.
 
 #### Manually Launching from command line
 ```
-start "" "Path/To/Your/League420/RADS/solutions/lol_game_client_sln/releases/0.0.1.68/deploy/League of Legends.exe" "8394" "LoLLauncher.exe" "" "127.0.0.1 5119 17BLOhi6KZsTtldTsizvHg== 1"
+cd "Path/To/Your/League420/RADS/solutions/lol_game_client_sln/releases/0.0.1.68/deploy/"
+start "" "League of Legends.exe" "" "" "" "127.0.0.1 5119 17BLOhi6KZsTtldTsizvHg== 1"
 ```
 
 #### Manually Launching from command line (Linux)
@@ -66,8 +69,8 @@ start "" "Path/To/Your/League420/RADS/solutions/lol_game_client_sln/releases/0.0
 * Run the game:
 
 ```
-./League\ of\ Legends.exe "8394" "/path/to/your/League-of-Legends-4-20/RADS/projects/lol_launcher/releases/0.0.0.227/deploy/LoLLauncher.exe" "" "127.0.0.1 5119 17BLOhi6KZsTtldTsizvHg== 1"
-````
+./League\ of\ Legends.exe "" "" "" "127.0.0.1 5119 17BLOhi6KZsTtldTsizvHg== 1"
+```
 
 # License
 

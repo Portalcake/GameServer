@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Numerics;
 using GameServerCore.Domain.GameObjects;
 using GameServerCore.Enums;
 
@@ -12,15 +13,18 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
         public LaneTurret(
             Game game,
             string name,
-            float x = 0,
-            float y = 0,
+            string model,
+            Vector2 position,
             TeamId team = TeamId.TEAM_BLUE,
             TurretType type = TurretType.OUTER_TURRET,
             int[] items = null,
-            uint netId = 0
-        ) : base(game, name, "", x, y, team, netId)
+            uint netId = 0,
+            LaneID lane = LaneID.NONE,
+            MapData.MapObject mapObject = null
+        ) : base(game, name, model, position, team, netId, lane, mapObject)
         {
             Type = type;
+
             if (items != null)
             {
                 foreach (var item in items)
@@ -81,9 +85,6 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
                     Stats.Armor.BaseValue = 60.0f;
                     Stats.MagicResist.BaseValue = 100.0f;
                     Stats.AttackDamage.BaseValue = 170.0f;
-
-                    AutoAttackCastTime = 0.165f;
-                    AutoAttackProjectileSpeed = 1200.0f;
                     break;
                 case TurretType.OUTER_TURRET:
                     _globalGold = 125;
@@ -96,9 +97,6 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
                     Stats.Armor.BaseValue = 60.0f;
                     Stats.MagicResist.BaseValue = 100.0f;
                     Stats.AttackDamage.BaseValue = 152.0f;
-
-                    AutoAttackCastTime = 0.165f;
-                    AutoAttackProjectileSpeed = 1200.0f;
                     break;
                 case TurretType.INHIBITOR_TURRET:
                     _globalGold = 150;
@@ -113,9 +111,6 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
                     Stats.Armor.BaseValue = 67.0f;
                     Stats.MagicResist.BaseValue = 100.0f;
                     Stats.AttackDamage.BaseValue = 190.0f;
-
-                    AutoAttackCastTime = 0.165f;
-                    AutoAttackProjectileSpeed = 1200.0f;
                     break;
                 case TurretType.NEXUS_TURRET:
                     _globalGold = 50;
@@ -129,12 +124,9 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
                     Stats.Armor.BaseValue = 65.0f;
                     Stats.MagicResist.BaseValue = 100.0f;
                     Stats.AttackDamage.BaseValue = 180.0f;
-
-                    AutoAttackCastTime = 0.165f;
-                    AutoAttackProjectileSpeed = 1200.0f;
                     break;
                 case TurretType.FOUNTAIN_TURRET:
-                    IsMelee = false;
+                    IsMelee = true;
                     Stats.AttackSpeedFlat = 1.6f;
                     Stats.GrowthAttackSpeed = 2.125f;
                     Stats.CurrentHealth = 9999;
@@ -143,8 +135,6 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
                     Stats.AttackDamage.BaseValue = 999.0f;
                     _globalGold = 100.0f;
                     Stats.Range.BaseValue = 1250.0f;
-                    AutoAttackCastTime = 1f / 30;
-                    AutoAttackProjectileSpeed = 2000.0f;
                     break;
                 default:
 
@@ -155,9 +145,6 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
                     Stats.AttackSpeedFlat = 0.83f;
                     Stats.Armor.PercentBonus = 0.5f;
                     Stats.MagicResist.PercentBonus = 0.5f;
-
-                    AutoAttackCastTime = 0.165f;
-                    AutoAttackProjectileSpeed = 1200.0f;
 
                     break;
             }
@@ -279,15 +266,6 @@ namespace LeagueSandbox.GameServer.GameObjects.AttackableUnits.AI
 
             _turretHpUpdated = true;
             base.Update(diff);
-        }
-
-        public override void RefreshWaypoints()
-        {
-        }
-
-        public override float GetMoveSpeed()
-        {
-            return 0;
         }
 
         public override void AutoAttackHit(IAttackableUnit target)

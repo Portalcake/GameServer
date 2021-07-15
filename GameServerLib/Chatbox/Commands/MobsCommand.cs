@@ -41,10 +41,10 @@ namespace LeagueSandbox.GameServer.Chatbox.Commands
                 .Where(xx => xx.Value.Team == team.ToTeamId())
                 .Where(xx => xx.Value is Minion || xx.Value is Monster);
 
-            var client = _playerManager.GetPeerInfo((ulong)userId);
+            var client = _playerManager.GetPeerInfo(userId);
             foreach (var unit in units)
             {
-                 _game.PacketNotifier.NotifyPing(client, new Vector2(unit.Value.X, unit.Value.Y), 0, Pings.PING_DANGER);
+                 _game.PacketNotifier.NotifyPing(client, new Vector2(unit.Value.Position.X, unit.Value.Position.Y), 0, Pings.PING_DANGER);
             }
         }
     }

@@ -1,24 +1,47 @@
 using System;
 using GameServerCore.Domain.GameObjects;
-using GameServerCore.Domain;
+using GameServerCore.Domain.GameObjects.Spell;
+using GameServerCore.Domain.GameObjects.Spell.Missile;
 using static LeagueSandbox.GameServer.API.ApiFunctionManager;
 using LeagueSandbox.GameServer.Scripting.CSharp;
+using System.Numerics;
+using GameServerCore.Scripting.CSharp;
 
 namespace Spells
 {
-    public class Imbue : IGameScript
+    public class Imbue : ISpellScript
     {
-        public void OnStartCasting(IObjAiBase owner, ISpell spell, IAttackableUnit target)
+        public ISpellScriptMetadata ScriptMetadata { get; private set; } = new SpellScriptMetadata()
         {
-            spell.SpellAnimation("SPELL1", owner);
+            TriggersSpellCasts = true
+            // TODO
+        };
+
+        public void OnActivate(IObjAiBase owner, ISpell spell)
+        {
         }
 
-        public void OnFinishCasting(IObjAiBase owner, ISpell spell, IAttackableUnit target)
+        public void OnDeactivate(IObjAiBase owner, ISpell spell)
         {
+        }
+
+        public void OnSpellPreCast(IObjAiBase owner, ISpell spell, IAttackableUnit target, Vector2 start, Vector2 end)
+        {
+        }
+
+        public void OnSpellCast(ISpell spell)
+        {
+            //spell.CastInfo.Owner.SpellAnimation("SPELL1");
+        }
+
+        public void OnSpellPostCast(ISpell spell)
+        {
+            var owner = spell.CastInfo.Owner;
+            var target = spell.CastInfo.Targets[0].Unit;
             if (target.Team == owner.Team)
             {
-                var p1 = AddParticleTarget(owner, "Imbue_glow.troy", target, 1);
-                var p2 = AddParticleTarget(owner, "Imbue_cas.troy", owner, 1);
+                var p1 = AddParticleTarget(owner, target, "Imbue_glow.troy", target);
+                var p2 = AddParticleTarget(owner, owner, "Imbue_cas.troy", owner);
                 CreateTimer(1.75f, () =>
                 {
                     RemoveParticle(p1);
@@ -36,38 +59,38 @@ namespace Spells
             }
         }
 
-        public void ApplyEffects(IObjAiBase owner, IAttackableUnit target, ISpell spell, IProjectile projectile)
-        {
-        }
-
         private void PerformHeal(IObjAiBase owner, ISpell spell, IAttackableUnit target)
         {
             var ap = owner.Stats.AbilityPower.Total * 0.3f;
             var baseHp = (owner.Stats.HealthPoints.Total - owner.Stats.HealthPoints.BaseValue) * 0.05f;
-            float healthGain = 20 + spell.Level * 40 + ap + baseHp;
+            float healthGain = 20 + spell.CastInfo.SpellLevel * 40 + ap + baseHp;
 
-            if (target == owner && spell.Target == owner)
+            if (target == owner && spell.CastInfo.Targets[0] == owner)
             {
                 var selfAp = owner.Stats.AbilityPower.Total * 0.42f;
                 var selfBaseHp = (owner.Stats.HealthPoints.Total - owner.Stats.HealthPoints.BaseValue) * 0.07f;
-                healthGain = 28 + spell.Level * 56 + selfAp + selfBaseHp;
+                healthGain = 28 + spell.CastInfo.SpellLevel * 56 + selfAp + selfBaseHp;
             }
 
             var newHealth = target.Stats.CurrentHealth + healthGain;
             target.Stats.CurrentHealth = Math.Min(newHealth, target.Stats.HealthPoints.Total);
-            AddParticleTarget(owner, "global_ss_heal_02.troy", target);
-            AddParticleTarget(owner, "global_ss_heal_speedboost.troy", target);
+            AddParticleTarget(owner, target, "global_ss_heal_02.troy", target);
+            AddParticleTarget(owner, target, "global_ss_heal_speedboost.troy", target);
         }
 
-        public void OnUpdate(double diff)
+        public void OnSpellChannel(ISpell spell)
         {
         }
 
-        public void OnActivate(IObjAiBase owner)
+        public void OnSpellChannelCancel(ISpell spell)
         {
         }
 
-        public void OnDeactivate(IObjAiBase owner)
+        public void OnSpellPostChannel(ISpell spell)
+        {
+        }
+
+        public void OnUpdate(float diff)
         {
         }
     }

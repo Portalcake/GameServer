@@ -1,6 +1,6 @@
 ﻿using GameServerCore.Content;
+using GameServerCore.Domain.GameObjects.Spell;
 using LeagueSandbox.GameServer.Content;
-using Newtonsoft.Json.Linq;
 
 namespace GameServerCore.Domain
 {
@@ -10,7 +10,7 @@ namespace GameServerCore.Domain
         string PackagePath { get; }
         void LoadPackage(string packageName);
         bool LoadScripts();
-        IContentFile GetContentFileFromJson(string contentType, string itemName);
+        IContentFile GetContentFileFromJson(string contentType, string itemName, string subPath = null);
         INavigationGrid GetNavigationGrid(int mapId);
         ISpellData GetSpellData(string spellName);
         ICharData GetCharData(string characterName);

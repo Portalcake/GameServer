@@ -1,47 +1,93 @@
 using System.Numerics;
 using GameServerCore.Enums;
 using GameServerCore.Domain.GameObjects;
+using GameServerCore.Domain.GameObjects.Spell;
 using static LeagueSandbox.GameServer.API.ApiFunctionManager;
-using GameServerCore.Domain;
 using LeagueSandbox.GameServer.Scripting.CSharp;
+using GameServerCore.Domain.GameObjects.Spell.Missile;
+using GameServerCore.Scripting.CSharp;
+using LeagueSandbox.GameServer.API;
+using GameServerCore.Domain.GameObjects.Spell.Sector;
 
 namespace Spells
 {
-    public class LucianQ : IGameScript
+    public class LucianQ : ISpellScript
     {
-        public void OnActivate(IObjAiBase owner)
+        public ISpellScriptMetadata ScriptMetadata { get; private set; } = new SpellScriptMetadata()
+        {
+            TriggersSpellCasts = true
+            // TODO
+        };
+
+        public void OnActivate(IObjAiBase owner, ISpell spell)
+        {
+            ApiEventManager.OnSpellSectorHit.AddListener(this, new System.Collections.Generic.KeyValuePair<ISpell, IObjAiBase>(spell, owner), TargetExecute, false);
+        }
+
+        public void OnDeactivate(IObjAiBase owner, ISpell spell)
         {
         }
 
-        public void OnDeactivate(IObjAiBase owner)
+        public void OnSpellPreCast(IObjAiBase owner, ISpell spell, IAttackableUnit target, Vector2 start, Vector2 end)
         {
         }
 
-        public void OnStartCasting(IObjAiBase owner, ISpell spell, IAttackableUnit target)
+        public void OnSpellCast(ISpell spell)
         {
-            var current = new Vector2(owner.X, owner.Y);
-            var to = Vector2.Normalize(new Vector2(spell.X, spell.Y) - current);
-            var range = to * 1100;
-            var trueCoords = current + range;
-
-            spell.AddLaser("LucianQ", trueCoords.X, trueCoords.Y);
-            spell.SpellAnimation("SPELL1", owner);
-            AddParticle(owner, "Lucian_Q_laser.troy", trueCoords.X, trueCoords.Y);
-            AddParticleTarget(owner, "Lucian_Q_cas.troy", owner);
+            var owner = spell.CastInfo.Owner;
+            var endPoint = GetPointFromUnit(owner, 1100f);
+            //AddParticleTarget(owner, null, "Lucian_Q_cas.troy", owner, lifetime: 1.0f);
+            AddParticle(owner, owner, "Lucian_Q_laser_red.troy", endPoint, bone: "C_BUFFBONE_GLB_CENTER_LOC", lifetime: 1.0f);
         }
 
-        public void OnFinishCasting(IObjAiBase owner, ISpell spell, IAttackableUnit target)
+        public void OnSpellPostCast(ISpell spell)
         {
+            var owner = spell.CastInfo.Owner;
+            var endPoint = GetPointFromUnit(owner, 1100f);
+
+            spell.CreateSpellSector(new SectorParameters
+            {
+                BindObject = owner,
+                HalfLength = 550f,
+                Width = spell.SpellData.LineWidth,
+                PolygonVertices = new Vector2[]
+                {
+                    // Basic square, however the values will be scaled by HalfLength/Width, which will make it a rectangle
+                    new Vector2(-1, 0),
+                    new Vector2(-1, 1),
+                    new Vector2(1, 1),
+                    new Vector2(1, 0)
+                },
+                SingleTick = true,
+                Type = SectorType.Polygon
+            });
+
+            AddParticle(owner, owner, "Lucian_Q_laser.troy", endPoint, bone: "C_BUFFBONE_GLB_CENTER_LOC", lifetime: 1.0f);
         }
 
-        public void ApplyEffects(IObjAiBase owner, IAttackableUnit target, ISpell spell, IProjectile projectile)
+        public void TargetExecute(ISpell spell, IAttackableUnit target, ISpellSector sector)
         {
-            var damage = owner.Stats.AttackDamage.Total * (0.45f + spell.Level * 0.15f) + (50 + spell.Level * 30);
+            var owner = spell.CastInfo.Owner;
+
+            var damage = owner.Stats.AttackDamage.Total * (0.45f + spell.CastInfo.SpellLevel * 0.15f) + (50 + spell.CastInfo.SpellLevel * 30);
             target.TakeDamage(owner, damage, DamageType.DAMAGE_TYPE_PHYSICAL, DamageSource.DAMAGE_SOURCE_SPELL,
                 false);
+            AddParticleTarget(owner, target, "Lucian_Q_tar.troy", target, 1.0f);
         }
 
-        public void OnUpdate(double diff)
+        public void OnSpellChannel(ISpell spell)
+        {
+        }
+
+        public void OnSpellChannelCancel(ISpell spell)
+        {
+        }
+
+        public void OnSpellPostChannel(ISpell spell)
+        {
+        }
+
+        public void OnUpdate(float diff)
         {
         }
     }

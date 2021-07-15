@@ -1,6 +1,8 @@
-﻿namespace LeagueSandbox.GameServer.Chatbox
+﻿using GameServerCore.Domain;
+
+namespace LeagueSandbox.GameServer.Chatbox
 {
-    public interface IChatCommand
+    public interface IChatCommand : IUpdate
     {
         string Command { get; }
         string Syntax { get; }
